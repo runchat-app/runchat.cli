@@ -36,10 +36,10 @@
   "homepage": "https://runchat.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/runchat-app/runchat-cli.git"
+    "url": "git+https://github.com/runchat-app/runchat.cli.git"
   },
   "bugs": {
-    "url": "https://github.com/runchat-app/runchat-cli/issues"
+    "url": "https://github.com/runchat-app/runchat.cli/issues"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
