@@ -1,7 +1,7 @@
 // Single source of truth for defaults and identity.
 
 export const CLI_NAME = "runchat";
-export const CLI_VERSION = "0.1.1";
+export const CLI_VERSION = "0.1.2";
 
 export const DEFAULT_BASE_URL = "https://runchat.com";
 
