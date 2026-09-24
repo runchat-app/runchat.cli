@@ -63,3 +63,21 @@ test("buildToolArgs ignores reserved CLI flags", () => {
   const args = buildToolArgs({ raw: true, base_url: "http://x", runchat_id: "abc" });
   assert.deepEqual(args, { runchat_id: "abc" });
 });
+
+test("@file stays a raw string unless the schema wants JSON", async () => {
+  const { writeFileSync, mkdtempSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "runchat-cli-"));
+  const json = join(dir, "inputs.json"), code = join(dir, "app.js"), bad = join(dir, "bad.json");
+  writeFileSync(json, '{"instruction":"hi"}');
+  writeFileSync(code, "[1, 2]; // code, not data");
+  writeFileSync(bad, "{nope");
+  const schema = { inputs: { type: "object" }, outputs: { type: "array" }, new_text: { type: "string" }, either: { type: ["string", "object"] } };
+  assert.deepEqual(buildToolArgs({ inputs: "@" + json }, schema).inputs, { instruction: "hi" });
+  assert.equal(buildToolArgs({ new_text: "@" + code }, schema).new_text, "[1, 2]; // code, not data");
+  assert.equal(buildToolArgs({ either: "@" + json }, schema).either, '{"instruction":"hi"}', "string-capable params stay raw");
+  assert.equal(buildToolArgs({ inputs: "@" + json }).inputs, '{"instruction":"hi"}', "no schema: raw string as before");
+  assert.throws(() => buildToolArgs({ inputs: "@" + bad }, schema), /expects JSON/);
+  assert.equal(buildToolArgs({ inputs: "@@literal" }, schema).inputs, "@literal");
+});

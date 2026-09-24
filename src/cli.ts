@@ -105,7 +105,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   requireToken(token, `run \`${toolName}\``);
-  return callCommand(client, toolName, flags);
+  return callCommand(client, baseUrl, toolName, flags);
 }
 
 function requireToken(token: string | undefined, action: string): void {
