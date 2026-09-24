@@ -112,6 +112,13 @@ runchat edit_file --runchat_id "$ID" --node_id n1 --new_text @app.js
 cat app.js | runchat edit_file --runchat_id "$ID" --node_id n1 --new_text @-
 ```
 
+File contents stay raw text, except for arguments the tool declares as an
+object or array, which are parsed as JSON:
+
+```sh
+runchat update_node --runchat_id "$ID" --node_id n1 --inputs @inputs.json
+```
+
 Dashes and underscores in argument names are interchangeable
 (`--runchat-id` == `--runchat_id`).
 

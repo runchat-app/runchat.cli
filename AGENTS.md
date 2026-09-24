@@ -45,6 +45,8 @@ npx @runchat/cli <tool> --arg value --arg2 value2
 - For complex/nested arguments, pass the whole object: `--json '{...}'`.
 - For large text (code, prompts), read from a file or stdin:
   `--new_text @file.js` or `--new_text @-`.
+  Object/array arguments read from a file are parsed as JSON:
+  `--inputs @inputs.json`.
 - Output is JSON on stdout. `--raw` gives the server's exact text.
 
 ## Exit codes (branch on these)
