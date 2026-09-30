@@ -9,6 +9,10 @@ Runchat workflows are node graphs on a canvas (prompts, models, code, inputs,
 outputs). The `@runchat/cli` command-line tool exposes every Runchat tool as a
 command and describes itself at runtime, so nothing needs to be memorised.
 
+If Runchat MCP tools are already available in this session (e.g.
+`mcp__runchat__*`), use those instead of the CLI — they are the same tools,
+already authenticated. Otherwise use the CLI as below.
+
 Run it with `npx -y @runchat/cli <command>` (or `runchat <command>` if it is
 installed globally). Output is JSON on stdout; messages go to stderr.
 

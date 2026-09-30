@@ -5,6 +5,11 @@ run Runchat node-based AI workflows from a shell. It is **self-describing** — 
 runtime you can list every tool and read each tool's parameters, so you never
 need hardcoded knowledge of the API.
 
+If the Runchat MCP server's tools are already available in your session, use
+those instead — they're the same tools. The CLI and MCP authenticate
+independently (separate sessions for the same account), so having both
+configured is fine.
+
 ## Setup (once)
 
 Invoke with `npx -y @runchat/cli <...>` (no install) or `runchat <...>` if it's
