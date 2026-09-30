@@ -7,7 +7,7 @@ name: Publish
 # One-time setup on npmjs.com:
 #   1. The `runchat` org/scope must exist.
 #   2. On @runchat/cli → Settings → Trusted Publishing, add a GitHub Actions
-#      publisher: owner/repo = runchat-app/runchat-cli, workflow = publish.yml
+#      publisher: owner/repo = runchat-app/runchat.cli, workflow = publish.yml
 #      (leave Environment blank unless you set `environment:` below).
 #   For a brand-new package, do ONE manual `npm publish --access public` first
 #   to create it, then add the trusted publisher for all future releases.
