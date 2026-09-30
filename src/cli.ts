@@ -13,11 +13,13 @@ import {
   McpNetworkError,
 } from "./mcp.js";
 import { getTools, findTool } from "./catalog.js";
+import { OAuthError } from "./oauth.js";
 import { topLevelHelp, renderToolHelp } from "./commands/help.js";
 import { toolsCommand } from "./commands/tools.js";
 import { callCommand, UsageError } from "./commands/call.js";
 import { guideCommand } from "./commands/guide.js";
 import { loginCommand, logoutCommand, statusCommand } from "./commands/auth.js";
+import { setupCommand } from "./commands/setup.js";
 
 // Built-in command names that are NOT Runchat tools.
 const BUILTINS = new Set([
@@ -30,6 +32,7 @@ const BUILTINS = new Set([
   "whoami",
   "guide",
   "call",
+  "setup",
 ]);
 
 async function main(argv: string[]): Promise<number> {
@@ -62,15 +65,18 @@ async function main(argv: string[]): Promise<number> {
   if (command === "login") {
     return loginCommand(flags);
   }
+  if (command === "setup") {
+    return setupCommand(positionals[1], flags);
+  }
 
   // Everything below talks to the server.
   const baseUrl = resolveBaseUrl(flags);
-  const { token } = resolveToken(flags);
-  const client = new McpClient(baseUrl, token);
-
   if (command === "status" || command === "whoami") {
     return statusCommand(flags);
   }
+
+  const { token } = await resolveToken(flags, baseUrl);
+  const client = new McpClient(baseUrl, token);
 
   // `help <tool>` and `<tool> --help` both render per-tool help.
   if (command === "help" && positionals[1]) {
@@ -111,9 +117,9 @@ async function main(argv: string[]): Promise<number> {
 function requireToken(token: string | undefined, action: string): void {
   if (!token) {
     throw new AuthMissingError(
-      `Not authenticated — cannot ${action}.\n` +
-        `Set an API key with \`runchat login\`, the RUNCHAT_API_KEY env var, or --api-key.\n` +
-        `Get a key from your Runchat account menu → API keys.`
+      `Not signed in — cannot ${action}.\n` +
+        `Run \`runchat login\` to sign in with your browser ` +
+        `(or set RUNCHAT_API_KEY / pass --api-key).`
     );
   }
 }
@@ -155,6 +161,10 @@ main(process.argv.slice(2))
       err(e.message);
       process.exit(EXIT.AUTH);
     }
+    if (e instanceof OAuthError) {
+      err(e.message);
+      process.exit(EXIT.AUTH);
+    }
     if (e instanceof UsageError) {
       err(e.message);
       process.exit(EXIT.USAGE);
@@ -162,7 +172,7 @@ main(process.argv.slice(2))
     if (e instanceof McpHttpError) {
       if (e.status === 401 || e.status === 403) {
         err(`Authentication failed (${e.status}): ${e.message}`);
-        info(c.dim("Check your API key with `runchat status`."));
+        info(c.dim("Run `runchat login` to sign in again, or `runchat status` to check."));
         process.exit(EXIT.AUTH);
       }
       if (e.status === 429) {

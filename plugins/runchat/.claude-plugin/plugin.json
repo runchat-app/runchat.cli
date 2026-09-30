@@ -1,0 +1,13 @@
+{
+  "name": "runchat",
+  "description": "Build and run Runchat node-based AI workflows from Claude Code via the Runchat CLI, with browser sign-in.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Runchat",
+    "url": "https://runchat.com"
+  },
+  "homepage": "https://runchat.com",
+  "repository": "https://github.com/runchat-app/runchat.cli",
+  "license": "MIT",
+  "keywords": ["runchat", "workflow", "ai", "cli"]
+}

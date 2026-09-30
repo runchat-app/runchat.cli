@@ -2,7 +2,8 @@
 // on-disk config written by `runchat login`.
 //
 // Precedence (highest first):
-//   API key   : --api-key flag  >  RUNCHAT_API_KEY env  >  config file
+//   token     : --api-key flag  >  RUNCHAT_API_KEY env  >  config file
+//               (a saved API key, else a saved browser-login session)
 //   base URL  : --base-url flag >  RUNCHAT_BASE_URL env >  config file > default
 //
 // Env/flags win over the file so agents and CI can stay stateless.
@@ -18,13 +19,30 @@ import {
   existsSync,
 } from "node:fs";
 import { DEFAULT_BASE_URL } from "./constants.js";
+import { getFreshOAuthToken } from "./oauth.js";
+
+/** A browser-login (OAuth) session, written by `runchat login`. */
+export interface StoredOAuth {
+  /** The Runchat server these tokens are for. */
+  baseUrl: string;
+  issuer: string;
+  tokenEndpoint: string;
+  clientId: string;
+  accessToken: string;
+  refreshToken?: string;
+  /** Epoch ms. */
+  expiresAt: number;
+}
 
 export interface StoredConfig {
   apiKey?: string;
   baseUrl?: string;
+  oauth?: StoredOAuth;
+  /** The CLI's dynamically registered OAuth client, reused across logins. */
+  oauthClient?: { issuer: string; clientId: string };
 }
 
-export type TokenSource = "flag" | "env" | "config" | "none";
+export type TokenSource = "flag" | "env" | "config" | "oauth" | "none";
 
 /** Per-user config directory. Honours RUNCHAT_CONFIG_DIR, then XDG / APPDATA. */
 export function configDir(): string {
@@ -69,10 +87,12 @@ export function writeConfig(patch: StoredConfig): string {
   return file;
 }
 
-export function clearStoredKey(): boolean {
+/** Remove the saved API key and browser session. Returns false if neither existed. */
+export function clearStoredCredentials(): boolean {
   const cfg = readConfig();
-  if (cfg.apiKey === undefined) return false;
+  if (cfg.apiKey === undefined && cfg.oauth === undefined) return false;
   delete cfg.apiKey;
+  delete cfg.oauth;
   const dir = configDir();
   mkdirSync(dir, { recursive: true });
   writeFileSync(configFile(), JSON.stringify(cfg, null, 2) + "\n", "utf8");
@@ -94,9 +114,14 @@ export interface ResolvedAuth {
   source: TokenSource;
 }
 
-export function resolveToken(
-  flags: Record<string, unknown>
-): ResolvedAuth {
+/**
+ * Resolve the Bearer token for this invocation. A saved browser session is
+ * refreshed here if its access token has expired (may throw OAuthError).
+ */
+export async function resolveToken(
+  flags: Record<string, unknown>,
+  baseUrl: string
+): Promise<ResolvedAuth> {
   const flagKey = flags["api_key"] ?? flags["token"];
   if (typeof flagKey === "string" && flagKey) {
     return { token: flagKey, source: "flag" };
@@ -106,6 +131,9 @@ export function resolveToken(
 
   const cfg = readConfig();
   if (cfg.apiKey) return { token: cfg.apiKey, source: "config" };
+
+  const oauthToken = await getFreshOAuthToken(baseUrl);
+  if (oauthToken) return { token: oauthToken, source: "oauth" };
 
   return { token: undefined, source: "none" };
 }

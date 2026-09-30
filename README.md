@@ -29,31 +29,56 @@ Node.js ≥ 18.
 
 ## Authenticate
 
-The CLI authenticates with a **Runchat API key**.
-
-1. Sign in at <https://runchat.com>
-2. Account menu → **API keys** → create a key (shown once)
-3. Provide it any of these ways (highest precedence first):
-
 ```sh
-runchat <tool> --api-key rc_xxx          # per-command flag
-export RUNCHAT_API_KEY=rc_xxx            # environment variable
-runchat login                            # stores it in your user config
+runchat login
 ```
 
-Check it anytime:
+This opens your browser to sign in to Runchat and approve the CLI, then saves
+a session that refreshes itself. It works from coding agents too (no terminal
+input needed). Use `--no-browser` to just print the sign-in URL, and
+`--timeout <seconds>` to change how long it waits (default 300).
+
+Prefer an API key (CI, headless machines)?
 
 ```sh
-runchat status        # shows the server, your key (masked), and verifies it
+runchat login --paste                    # opens runchat.com to create a key, then paste it
+runchat login --api-key <key>            # or save a key you already have
+echo "$KEY" | runchat login              # or pipe it in
+export RUNCHAT_API_KEY=<key>             # or don't store anything
+runchat <tool> --api-key <key>           # per command
 ```
 
-OAuth access tokens also work — pass one as the Bearer token via `--api-key` /
-`RUNCHAT_API_KEY`. See <https://runchat.com/auth.md> for details.
+Precedence: `--api-key` flag > `RUNCHAT_API_KEY` env > saved key > saved
+browser session.
+
+```sh
+runchat status        # who you're signed in as; exit 3 = not signed in
+runchat logout        # remove saved credentials
+```
+
+## Use with Claude Code
+
+Install the Runchat skill so Claude knows to use this CLI whenever you mention
+Runchat:
+
+```sh
+npx @runchat/cli setup claude            # installs ~/.claude/skills/runchat
+```
+
+or add it as a plugin from inside Claude Code:
+
+```
+/plugin marketplace add runchat-app/runchat.cli
+/plugin install runchat@runchat
+```
+
+Then just ask: *"use Runchat to build a workflow that …"*. Claude will sign
+you in through the browser the first time.
 
 ## Quickstart
 
 ```sh
-export RUNCHAT_API_KEY=rc_xxx
+runchat login
 
 # discover
 runchat tools                                    # all tools, grouped
@@ -131,7 +156,7 @@ Results print as pretty JSON. Use `--raw` for the server's exact text.
 | `0` | success |
 | `1` | the tool reported an error |
 | `2` | bad usage (unknown argument, missing tool name) |
-| `3` | authentication problem (no/invalid key) |
+| `3` | authentication problem (not signed in / invalid key) |
 | `4` | network failure |
 
 ## Configuration
@@ -141,9 +166,11 @@ Results print as pretty JSON. Use `--raw` for the server's exact text.
 | `RUNCHAT_API_KEY` | API key (alias: `RUNCHAT_TOKEN`) |
 | `RUNCHAT_BASE_URL` | Override the server (default `https://runchat.com`) |
 | `RUNCHAT_CONFIG_DIR` | Override where config + cache are stored |
+| `RUNCHAT_NO_BROWSER` | Print sign-in URLs instead of opening a browser |
 
 The config file lives at `%APPDATA%\runchat\config.json` (Windows) or
-`~/.config/runchat/config.json` (macOS/Linux) and stores your API key.
+`~/.config/runchat/config.json` (macOS/Linux) and stores your API key or
+browser session. Set `RUNCHAT_NO_BROWSER=1` to never open a browser.
 
 ## License
 

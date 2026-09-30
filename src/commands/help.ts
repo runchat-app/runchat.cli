@@ -22,9 +22,10 @@ ${b("BUILT-IN COMMANDS")}
   tools                 List every available tool with a one-line description
   <tool> --help         Show a tool's full description and parameters
   guide                 Print the agent getting-started guide (from the server)
-  login                 Save an API key for future calls
-  logout                Remove the saved API key
-  status                Show auth status and verify the configured key
+  login                 Sign in with your browser (or save an API key)
+  logout                Remove saved credentials
+  status                Show auth status (exit 3 = not signed in)
+  setup claude          Install the Runchat skill for Claude Code
   version               Print the CLI version
   help                  Show this help
 
@@ -59,12 +60,15 @@ ${b("OUTPUT")}
   Exit codes: 0 ok · 1 tool error · 2 usage · 3 auth · 4 network.
 
 ${b("AUTHENTICATION")}
-  Send a Runchat API key as a Bearer token. Get one at ${DEFAULT_BASE_URL}
-  (account menu → API keys). Provide it any of these ways (highest precedence
-  first):
+  ${CLI_NAME} login                 open the browser, sign in, done (session
+                                auto-refreshes). --no-browser prints the URL
+                                instead; --timeout <s> (default 300).
+  ${CLI_NAME} login --paste         open ${DEFAULT_BASE_URL} to create an API key,
+                                then paste it
+  API keys can also be passed directly (highest precedence first):
     --api-key <key>             per-command flag
-    RUNCHAT_API_KEY=<key>       environment variable (best for agents/CI)
-    ${CLI_NAME} login                stores it in your user config
+    RUNCHAT_API_KEY=<key>       environment variable (best for CI)
+    ${CLI_NAME} login --api-key <key>  stores it in your user config
 
 ${b("CONFIGURATION")}
   RUNCHAT_API_KEY       API key (or RUNCHAT_TOKEN)
@@ -72,7 +76,7 @@ ${b("CONFIGURATION")}
   RUNCHAT_CONFIG_DIR    Override where config/cache are stored
   --base-url <url>      Per-command base URL override
 
-${d(`Docs: ${DEFAULT_BASE_URL}/auth.md · Repo: github.com/runchat-app/runchat-cli`)}
+${d(`Docs: ${DEFAULT_BASE_URL}/auth.md · Repo: github.com/runchat-app/runchat.cli`)}
 `;
 }
 
