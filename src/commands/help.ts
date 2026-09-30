@@ -20,7 +20,7 @@ ${b("USAGE")}
 
 ${b("BUILT-IN COMMANDS")}
   tools                 List every available tool with a one-line description
-  <tool> --help         Show a tool's full description and parameters
+  <tool> [<tool>...] --help  Show full description and parameters
   guide                 Print the agent getting-started guide (from the server)
   login                 Sign in with your browser (or save an API key)
   logout                Remove saved credentials
@@ -48,7 +48,9 @@ ${b("PASSING ARGUMENTS")}
   --key value           Set an argument. Values are smart-typed: numbers,
                         true/false/null and JSON ([...]/{...}) are parsed;
                         everything else is a string.
-  --key '[1,2]'         Arrays and objects: pass JSON.
+  --key '[1,2]'         Arrays and objects: pass JSON, or without JSON:
+  --ids a,b             lists (or repeat --ids); a single value → [value]
+  --params.prompt "x"   set one field of an object argument
   --json '{"a":1}'      Provide the whole argument object at once (individual
                         --flags override keys in it).
   --key @file.txt       Read the value from a file.

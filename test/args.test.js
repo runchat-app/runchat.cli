@@ -79,5 +79,41 @@ test("@file stays a raw string unless the schema wants JSON", async () => {
   assert.equal(buildToolArgs({ either: "@" + json }, schema).either, '{"instruction":"hi"}', "string-capable params stay raw");
   assert.equal(buildToolArgs({ inputs: "@" + json }).inputs, '{"instruction":"hi"}', "no schema: raw string as before");
   assert.throws(() => buildToolArgs({ inputs: "@" + bad }, schema), /expects JSON/);
-  assert.equal(buildToolArgs({ inputs: "@@literal" }, schema).inputs, "@literal");
+  assert.equal(buildToolArgs({ new_text: "@@literal" }, schema).new_text, "@literal");
+});
+
+test("array params accept bare values, comma lists and PowerShell-mangled JSON", () => {
+  const schema = {
+    node_ids: { type: "array", items: { type: "string" } },
+    sizes: { type: "array", items: { type: "number" } },
+  };
+  const ids = (v) => buildToolArgs({ node_ids: v }, schema).node_ids;
+  assert.deepEqual(ids("nDWd"), ["nDWd"]);
+  assert.deepEqual(ids("a,b"), ["a", "b"]);
+  assert.deepEqual(ids("[nDWd]"), ["nDWd"], "PowerShell 5.1 turns '[\"nDWd\"]' into [nDWd]");
+  assert.deepEqual(ids("[a, b]"), ["a", "b"]);
+  assert.deepEqual(ids('["a","b"]'), ["a", "b"], "real JSON still works");
+  assert.deepEqual(ids("007"), ["007"], "string items keep id-like text");
+  assert.deepEqual(ids(["a", "b"]), ["a", "b"], "repeated flags");
+  assert.deepEqual(buildToolArgs({ sizes: "1,2" }, schema).sizes, [1, 2]);
+  assert.deepEqual(buildToolArgs({ sizes: "5" }, schema).sizes, [5]);
+});
+
+test("string params keep raw text; object params reject non-JSON with a hint", () => {
+  const schema = { name: { type: "string" }, params: { type: "object" }, n: { type: "integer" } };
+  assert.equal(buildToolArgs({ name: "2024" }, schema).name, "2024");
+  assert.equal(buildToolArgs({ name: "true" }, schema).name, "true");
+  assert.equal(buildToolArgs({ n: "3" }, schema).n, 3);
+  assert.deepEqual(buildToolArgs({ params: '{"prompt":"x"}' }, schema).params, { prompt: "x" });
+  assert.throws(() => buildToolArgs({ params: "{prompt: x}" }, schema), /expects a JSON object[\s\S]*PowerShell/);
+  assert.equal(buildToolArgs({ name: ["a", "b"] }, schema).name, "b", "repeated string flag keeps the last");
+});
+
+test("dotted flags build nested objects and merge with whole-object flags", () => {
+  assert.deepEqual(buildToolArgs({ "params.prompt": "a cat", "params.seed": "7" }).params, { prompt: "a cat", seed: 7 });
+  assert.deepEqual(
+    buildToolArgs({ "params.prompt": "x", params: '{"seed":1}' }, { params: { type: "object" } }).params,
+    { seed: 1, prompt: "x" }
+  );
+  assert.deepEqual(buildToolArgs({ "a.b.c": "1" }).a, { b: { c: 1 } });
 });

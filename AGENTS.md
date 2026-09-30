@@ -32,11 +32,24 @@ Never ask the user to paste an API key into chat; if browser sign-in isn't
 possible, ask them to run `npx @runchat/cli login --paste` themselves or set
 `RUNCHAT_API_KEY`.
 
+## Quick recipe: generate an image
+
+No `guide`/`list_models`/`get_model_params` needed — use the default image
+model `runware:400@2`:
+
+```sh
+npx -y @runchat/cli create_runchat --name "Gehry museum"             # → id, editor_url
+npx -y @runchat/cli create_image_node --runchat_id <id> --model_id runware:400@2 --params.prompt "..."   # → node id
+npx -y @runchat/cli run_nodes --runchat_id <id> --node_ids <node_id> # → image URL
+```
+
+(If `run_nodes` shows no URL, use `read_nodes --runchat_id <id> --node_ids <node_id>`.)
+
 ## The only three commands you need to discover everything
 
 ```sh
-npx @runchat/cli tools                 # list all tools + one-line descriptions
-npx @runchat/cli <tool> --help         # full parameters for one tool (types, required)
+npx @runchat/cli tools                 # all tools + their arguments (required first, [optional])
+npx @runchat/cli <tool> <tool> --help  # full parameters for one or more tools
 npx @runchat/cli guide                 # the canonical Runchat workflow-building guide
 ```
 
@@ -55,7 +68,11 @@ npx @runchat/cli <tool> --arg value --arg2 value2
   `--limit 5 --is_private true --tags '["x"]'`.
 - Canvas tools require `--runchat_id <id>`. Get an id from `list_runchats` or
   `create_runchat`.
-- For complex/nested arguments, pass the whole object: `--json '{...}'`.
+- Lists: `--node_ids a,b` or repeat the flag. Object fields: dotted flags,
+  `--params.prompt "..." --params.seed 7`. Or pass JSON, or the whole
+  argument object with `--json '{...}'`.
+- Windows PowerShell strips double quotes inside '...' arguments — prefer the
+  list and dotted-flag forms over inline JSON there.
 - For large text (code, prompts), read from a file or stdin:
   `--new_text @file.js` or `--new_text @-`.
   Object/array arguments read from a file are parsed as JSON:

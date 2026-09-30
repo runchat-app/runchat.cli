@@ -16,11 +16,25 @@ function pad(name: string, width: number): string {
   return name + " ".repeat(Math.max(0, width - name.length));
 }
 
+/**
+ * Compact argument list: required args first, then optional ones in brackets.
+ * runchat_id is implied for canvas tools (see the group heading), so it's omitted.
+ */
+export function signature(tool: McpTool): string {
+  const props = Object.keys(tool.inputSchema?.properties ?? {}).filter((n) => n !== "runchat_id");
+  const required = new Set(tool.inputSchema?.required ?? []);
+  const req = props.filter((n) => required.has(n)).map((n) => `--${n}`);
+  const opt = props.filter((n) => !required.has(n)).map((n) => `--${n}`);
+  return [...req, ...(opt.length ? [`[${opt.join(" ")}]`] : [])].join(" ");
+}
+
 function printGroup(title: string, tools: McpTool[], width: number): void {
   if (tools.length === 0) return;
   process.stdout.write(`\n${c.bold(title)}\n`);
   for (const t of [...tools].sort((a, b) => a.name.localeCompare(b.name))) {
     process.stdout.write(`  ${c.cyan(pad(t.name, width))}  ${c.dim(firstLine(t.description))}\n`);
+    const sig = signature(t);
+    if (sig) process.stdout.write(`  ${" ".repeat(width)}  ${sig}\n`);
   }
 }
 
@@ -52,7 +66,7 @@ export async function toolsCommand(
   printGroup("Canvas  (pass --runchat_id)", canvas, width);
 
   process.stdout.write(
-    `\n${c.dim(`Run \`${CLI_NAME} <tool> --help\` for a tool's parameters.`)}\n`
+    `\n${c.dim(`Run \`${CLI_NAME} <tool> [<tool> ...] --help\` for full parameter details.`)}\n`
   );
   return 0;
 }

@@ -103,9 +103,9 @@ parameters at runtime:
 
 | Command | What it shows |
 | --- | --- |
-| `runchat tools` | Every tool, grouped, with a one-line description |
+| `runchat tools` | Every tool, grouped, with a one-line description and its arguments |
 | `runchat tools --json` | The raw tool definitions (name, description, schema) |
-| `runchat <tool> --help` | A tool's full description and every parameter |
+| `runchat <tool> [<tool> ...] --help` | Full description and every parameter for one or more tools |
 | `runchat guide` | The Runchat workflow-building guide |
 
 Add `--refresh` to force an update of the cached tool list.
@@ -121,6 +121,18 @@ Arguments are plain `--flags`. Values are **smart-typed**:
 --tags '["a","b"]'        # array    → ["a","b"]
 --initial_data '{"code":["return 1"]}'   # object
 ```
+
+Lists and object fields don't need JSON (handy in Windows PowerShell, which
+strips the double quotes inside '...' arguments):
+
+```sh
+--node_ids a,b            # array    → ["a","b"]   (or repeat --node_ids)
+--node_ids a              # array    → ["a"]
+--params.prompt "a cat"   # object   → {"prompt":"a cat"}
+```
+
+Values are also fitted to the tool's declared types, so `--name 2024` stays a
+string when the parameter is a string.
 
 Bare words stay strings (`--model gpt-4` → `"gpt-4"`), and id-like values are
 preserved (`--x 007` → `"007"`). To pass the whole argument object at once:
