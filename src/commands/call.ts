@@ -62,10 +62,10 @@ function fitToSchema(value: unknown, raw: string, key: string, prop?: JsonSchema
 
   if (types.includes("object") && !types.includes("string") && typeof value === "string") {
     throw new UsageError(
-      `--${key} expects a JSON object, got: ${raw}
-` +
-        `If you're in Windows PowerShell, it strips the inner double quotes — ` +
-        `put the JSON in a file and pass --${key} @file.json, or escape each quote as \\".`
+      `--${key} expects a JSON object, got: ${raw}\n` +
+        `Windows PowerShell mangles inline JSON (it strips inner quotes and splits on spaces). ` +
+        `Set fields with dotted flags instead: --${key}.<field> "value" (e.g. --${key}.prompt "a red chair"), ` +
+        `or put the JSON in a file and pass --${key} @file.json.`
     );
   }
   return value;

@@ -1,6 +1,6 @@
 {
   "name": "@runchat/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Command-line interface for Runchat — build and run node-based AI workflows from the terminal. A faithful CLI port of the Runchat MCP server.",
   "type": "module",
   "bin": {

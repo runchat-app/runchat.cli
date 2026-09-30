@@ -105,7 +105,9 @@ test("string params keep raw text; object params reject non-JSON with a hint", (
   assert.equal(buildToolArgs({ name: "true" }, schema).name, "true");
   assert.equal(buildToolArgs({ n: "3" }, schema).n, 3);
   assert.deepEqual(buildToolArgs({ params: '{"prompt":"x"}' }, schema).params, { prompt: "x" });
-  assert.throws(() => buildToolArgs({ params: "{prompt: x}" }, schema), /expects a JSON object[\s\S]*PowerShell/);
+  assert.throws(() => buildToolArgs({ params: "{prompt: x}" }, schema), /expects a JSON object[\s\S]*--params\.<field>[\s\S]*@file\.json/);
+  // Exactly what PowerShell 5.1 delivered for --params '{\"prompt\":\"Deconstructivist museum ...\"}'.
+  assert.throws(() => buildToolArgs({ params: '{"prompt":"Deconstructivist' }, schema), /--params\.prompt "a red chair"/);
   assert.equal(buildToolArgs({ name: ["a", "b"] }, schema).name, "b", "repeated string flag keeps the last");
 });
 
