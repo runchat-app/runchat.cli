@@ -137,6 +137,8 @@ export async function browserLogin(opts: LoginOptions): Promise<StoredOAuth> {
     });
     return toStored(tokens, { clientId, issuer: meta.issuer, tokenEndpoint: meta.token_endpoint, baseUrl: opts.baseUrl });
   } finally {
+    // Node 18's close() leaves idle keep-alive sockets open (19+ closes them).
+    server.closeAllConnections?.(); // added in Node 18.2
     server.close();
   }
 }
@@ -273,7 +275,11 @@ function waitForCode(server: Server, state: string, timeoutMs: number): Promise<
       else if (gotState !== state) failure = "State mismatch — please retry `runchat login`.";
       else if (!code) failure = "No authorization code returned.";
 
-      res.writeHead(failure ? 400 : 200, { "Content-Type": "text/html; charset=utf-8" });
+      res.writeHead(failure ? 400 : 200, {
+        "Content-Type": "text/html; charset=utf-8",
+        // Don't leave a keep-alive socket pointing at this one-shot server.
+        Connection: "close",
+      });
       res.end(callbackPage(failure));
       clearTimeout(timer);
       if (failure) reject(new OAuthError(`Sign-in failed: ${failure}`));
