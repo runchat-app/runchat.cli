@@ -1,0 +1,18 @@
+{
+  "name": "runchat",
+  "owner": {
+    "name": "Runchat",
+    "url": "https://runchat.com"
+  },
+  "metadata": {
+    "description": "Runchat plugins for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "runchat",
+      "source": "./plugins/runchat",
+      "description": "Build and run Runchat node-based AI workflows from Claude Code via the Runchat CLI, with browser sign-in.",
+      "category": "productivity"
+    }
+  ]
+}

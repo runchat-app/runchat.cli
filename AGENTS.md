@@ -7,17 +7,25 @@ need hardcoded knowledge of the API.
 
 ## Setup (once)
 
-```sh
-export RUNCHAT_API_KEY=<the user's Runchat API key>   # required
-# optional: export RUNCHAT_BASE_URL=https://runchat.com  (default)
-```
-
-Invoke with `npx @runchat/cli <...>` (no install) or `runchat <...>` if it's
-installed globally. Verify auth before doing work:
+Invoke with `npx -y @runchat/cli <...>` (no install) or `runchat <...>` if it's
+installed globally. Check auth before doing work:
 
 ```sh
-npx @runchat/cli status     # exit 0 = authenticated
+npx -y @runchat/cli status     # exit 0 = signed in, exit 3 = not signed in
 ```
+
+If not signed in:
+
+```sh
+npx -y @runchat/cli login      # opens the user's browser; waits up to 5 min
+```
+
+`login` blocks until the user approves in the browser, so run it in the
+background or with a long timeout, and tell the user a sign-in page has opened
+(the command also prints the URL — relay it if the browser didn't open).
+Never ask the user to paste an API key into chat; if browser sign-in isn't
+possible, ask them to run `npx @runchat/cli login --paste` themselves or set
+`RUNCHAT_API_KEY`.
 
 ## The only three commands you need to discover everything
 
