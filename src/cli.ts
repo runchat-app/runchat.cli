@@ -80,7 +80,7 @@ async function main(argv: string[]): Promise<number> {
 
   // `help <tool>` and `<tool> --help` both render per-tool help.
   if (command === "help" && positionals[1]) {
-    return showToolHelp(client, baseUrl, positionals[1], flags);
+    return showToolHelp(client, baseUrl, positionals.slice(1), flags);
   }
 
   if (command === "tools") {
@@ -107,7 +107,9 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (wantsHelp) {
-    return showToolHelp(client, baseUrl, toolName, flags);
+    // `runchat a b c --help` shows several tools at once.
+    const names = command === "call" ? positionals.slice(1) : positionals;
+    return showToolHelp(client, baseUrl, names, flags);
   }
 
   requireToken(token, `run \`${toolName}\``);
@@ -129,7 +131,7 @@ class AuthMissingError extends Error {}
 async function showToolHelp(
   client: McpClient,
   baseUrl: string,
-  toolName: string,
+  toolNames: string[],
   flags: Record<string, unknown>
 ): Promise<number> {
   let tools;
@@ -144,12 +146,15 @@ async function showToolHelp(
     );
     return EXIT.AUTH;
   }
-  const tool = findTool(tools, toolName);
-  if (!tool) {
-    err(`Unknown tool "${toolName}". Run \`runchat tools\` to see all tools.`);
+  const unknown = toolNames.filter((n) => !findTool(tools, n));
+  if (unknown.length) {
+    err(
+      `Unknown tool${unknown.length > 1 ? "s" : ""} ${unknown.map((n) => `"${n}"`).join(", ")}. ` +
+        `Run \`runchat tools\` to see all tools.`
+    );
     return EXIT.USAGE;
   }
-  process.stdout.write(renderToolHelp(tool));
+  process.stdout.write(toolNames.map((n) => renderToolHelp(findTool(tools, n)!)).join("\n"));
   return EXIT.OK;
 }
 

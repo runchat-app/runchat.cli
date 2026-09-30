@@ -21,11 +21,54 @@ const RESERVED = new Set([
   "h",
 ]);
 
+function typesOf(prop: JsonSchemaProp | undefined): string[] {
+  if (!prop?.type) return [];
+  return Array.isArray(prop.type) ? prop.type : [prop.type];
+}
+
 /** True when a schema property only accepts structured JSON (object/array). */
 function wantsJson(prop: JsonSchemaProp | undefined): boolean {
-  if (!prop?.type) return false;
-  const types = Array.isArray(prop.type) ? prop.type : [prop.type];
+  const types = typesOf(prop);
   return !types.includes("string") && types.some((t) => t === "object" || t === "array");
+}
+
+/**
+ * Fit a smart-coerced flag value to the tool's schema, when we know it:
+ *
+ * - array params accept a bare value or a comma list: `--node_ids a` → ["a"],
+ *   `--node_ids a,b` → ["a","b"]. This also repairs `'["a"]'` after Windows
+ *   PowerShell strips the inner quotes (it arrives as `[a]`).
+ * - string-only params keep the raw text (`--name 2024` stays "2024").
+ * - object-only params given non-JSON text fail fast with a usable hint,
+ *   instead of the server receiving a string.
+ */
+function fitToSchema(value: unknown, raw: string, key: string, prop?: JsonSchemaProp): unknown {
+  const types = typesOf(prop);
+  if (types.length === 0) return value;
+
+  if (types.length === 1 && types[0] === "string") return raw;
+
+  if (types.includes("array") && !types.includes("string") && !Array.isArray(value)) {
+    if (typeof value !== "string") return [value];
+    let body = value.trim();
+    if (body.startsWith("[") && body.endsWith("]")) body = body.slice(1, -1);
+    const itemIsString = typesOf(prop?.items).every((t) => t === "string");
+    return body
+      .split(",")
+      .map((part) => part.trim().replace(/^["']|["']$/g, ""))
+      .filter((part) => part !== "")
+      .map((part) => (itemIsString ? part : coerceValue(part)));
+  }
+
+  if (types.includes("object") && !types.includes("string") && typeof value === "string") {
+    throw new UsageError(
+      `--${key} expects a JSON object, got: ${raw}
+` +
+        `If you're in Windows PowerShell, it strips the inner double quotes — ` +
+        `put the JSON in a file and pass --${key} @file.json, or escape each quote as \\".`
+    );
+  }
+  return value;
 }
 
 /**
@@ -37,9 +80,9 @@ function wantsJson(prop: JsonSchemaProp | undefined): boolean {
 function resolveScalar(raw: string, key: string, prop?: JsonSchemaProp): unknown {
   let text: string;
   if (raw === "@-") text = readStdin();
-  else if (raw.startsWith("@@")) return coerceValue(raw.slice(1)); // literal leading @
+  else if (raw.startsWith("@@")) return fitToSchema(coerceValue(raw.slice(1)), raw.slice(1), key, prop); // literal leading @
   else if (raw.startsWith("@")) text = readFileSync(raw.slice(1), "utf8");
-  else return coerceValue(raw);
+  else return fitToSchema(coerceValue(raw), raw, key, prop);
   if (!wantsJson(prop)) return text; // string, uncoerced
   try {
     return JSON.parse(text);
@@ -83,12 +126,34 @@ export function buildToolArgs(
     args = { ...(parsed as Record<string, unknown>) };
   }
 
-  for (const [key, value] of Object.entries(flags)) {
+  // Dotted flags go last so they merge into (not get replaced by) a whole-object flag.
+  const entries = Object.entries(flags).sort(([a], [b]) => Number(a.includes(".")) - Number(b.includes(".")));
+  for (const [key, value] of entries) {
     if (RESERVED.has(key)) continue;
+    // Dotted flags set nested fields without writing JSON (which Windows
+    // PowerShell mangles): --params.prompt "a cat" → { params: { prompt: "a cat" } }.
+    if (key.includes(".")) {
+      const [head, ...rest] = key.split(".");
+      let target = args[head];
+      if (typeof target !== "object" || target === null || Array.isArray(target)) {
+        target = args[head] = {};
+      }
+      let obj = target as Record<string, unknown>;
+      for (const part of rest.slice(0, -1)) {
+        if (typeof obj[part] !== "object" || obj[part] === null) obj[part] = {};
+        obj = obj[part] as Record<string, unknown>;
+      }
+      const leaf = [value].flat().pop();
+      obj[rest[rest.length - 1]] = leaf === true ? true : resolveScalar(String(leaf), key);
+      continue;
+    }
     if (value === true) {
       args[key] = true;
     } else if (Array.isArray(value)) {
-      args[key] = value.map((v) => resolveScalar(v, key, schema[key]?.items));
+      const prop = schema[key];
+      const items = value.map((v) => resolveScalar(v, key, prop?.items));
+      // Repeated flags build a list; a string param only keeps the last one.
+      args[key] = typesOf(prop).length && !typesOf(prop).includes("array") ? items[items.length - 1] : items;
     } else {
       args[key] = resolveScalar(String(value), key, schema[key]);
     }
@@ -100,19 +165,15 @@ export function buildToolArgs(
 export class UsageError extends Error {}
 
 /**
- * Schema properties for the tool, fetched (from the cached catalog) only when a
- * flag reads a file or stdin — plain calls stay a single request. Best-effort:
- * without a catalog, file contents fall back to raw strings.
+ * Schema properties for the tool, from the cached catalog (one tools/list per
+ * hour at most), used to fit flag values to the declared types. Best-effort:
+ * without a catalog, values are smart-typed only.
  */
-async function fileArgSchema(
+async function toolArgSchema(
   client: McpClient,
   baseUrl: string,
-  toolName: string,
-  flags: Record<string, string | boolean | string[]>
+  toolName: string
 ): Promise<Record<string, JsonSchemaProp>> {
-  const readsFile = Object.entries(flags).some(([key, v]) =>
-    !RESERVED.has(key) && [v].flat().some((x) => typeof x === "string" && x.startsWith("@") && !x.startsWith("@@")));
-  if (!readsFile) return {};
   try {
     const { tools } = await getTools(client, baseUrl);
     return findTool(tools, toolName)?.inputSchema?.properties ?? {};
@@ -127,7 +188,7 @@ export async function callCommand(
   toolName: string,
   flags: Record<string, string | boolean | string[]>
 ): Promise<number> {
-  const args = buildToolArgs(flags, await fileArgSchema(client, baseUrl, toolName, flags));
+  const args = buildToolArgs(flags, await toolArgSchema(client, baseUrl, toolName));
   const result = await client.callTool(toolName, args);
   const isError = printToolResult(result, { raw: flags["raw"] === true });
   return isError ? EXIT.TOOL_ERROR : EXIT.OK;
