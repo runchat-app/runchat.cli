@@ -20,8 +20,8 @@ import { callCommand, UsageError } from "./commands/call.js";
 import { guideCommand } from "./commands/guide.js";
 import { loginCommand, logoutCommand, statusCommand } from "./commands/auth.js";
 import { setupCommand } from "./commands/setup.js";
-import { deployCommand } from "./commands/deploy.js";
-import { initCommand } from "./commands/init.js";
+import { deployCommand, DEPLOY_HELP } from "./commands/deploy.js";
+import { initCommand, INIT_HELP } from "./commands/init.js";
 
 // Built-in command names that are NOT Runchat tools.
 const BUILTINS = new Set([
@@ -38,6 +38,13 @@ const BUILTINS = new Set([
   "init",
   "deploy",
 ]);
+
+// Built-ins with their own help, shown for `<cmd> --help` and `help <cmd>`
+// without signing in.
+const BUILTIN_HELP: Record<string, string> = {
+  init: INIT_HELP,
+  deploy: DEPLOY_HELP,
+};
 
 async function main(argv: string[]): Promise<number> {
   const { positionals, flags } = parseArgs(argv);
@@ -61,6 +68,16 @@ async function main(argv: string[]): Promise<number> {
   }
   if (command === "help" && !positionals[1]) {
     process.stdout.write(topLevelHelp());
+    return EXIT.OK;
+  }
+  const builtinHelp =
+    command === "help"
+      ? BUILTIN_HELP[positionals[1]]
+      : wantsHelp
+        ? BUILTIN_HELP[command]
+        : undefined;
+  if (builtinHelp) {
+    process.stdout.write(builtinHelp);
     return EXIT.OK;
   }
   if (command === "logout") {
