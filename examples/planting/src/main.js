@@ -1,23 +1,35 @@
-// Planting UI: a turning specimen of the chosen species (grown in the page
-// from the same code the commands use), or the plants this app has placed,
-// optionally in the context of the whole scene.
+// Plant designer UI: one plant design, grown in the page from the same code
+// the commands use. Controls edit the shared design directly, so an agent
+// tuning the same design is seen live; "Add to scene" places it.
 import { createViewer } from "./viewer.js";
-import { SPECIES, VARIANTS, unitModel } from "./plants.js";
+import {
+  BARKS,
+  CROWNS,
+  LEAVES,
+  TEMPLATES,
+  VARIANTS,
+  growPlant,
+  mergeDesign,
+  normalizeDesign,
+} from "./plants.js";
 import { FOLIAGE_KINDS, foliageTexture, materialTextures } from "./textures.js";
 
-const statusEl = document.getElementById("status");
-const pick = document.getElementById("species");
-const modeEl = document.getElementById("mode");
-const contextEl = document.getElementById("context");
-for (const [key, s] of Object.entries(SPECIES))
-  pick.append(new Option(s.label, key));
-let busy = false;
-let variant = 0;
-let assets = {};
-let group = null;
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status");
+const fill = (el, values, label = (v) => v) => {
+  for (const v of values) el.append(new Option(label(v), v));
+};
+fill($("template"), Object.keys(TEMPLATES), (k) => TEMPLATES[k].name);
+fill($("crown"), CROWNS);
+fill($("leaf"), LEAVES, (k) => k.replace(/_/g, " "));
+fill($("bark"), BARKS, (k) => k.replace(/_/g, " "));
 
-// Textures come from the app's uploads when it has them, otherwise they are
-// generated here, so a species can be previewed before it is ever planted.
+let design = normalizeDesign(TEMPLATES.oak);
+let assets = {};
+let variant = 0;
+let shownKey = "";
+let busy = false;
+
 const local = new Map();
 function resolve(id) {
   if (assets[id]) return assets[id];
@@ -39,13 +51,44 @@ function resolve(id) {
   return local.get(id);
 }
 
+const viewer = createViewer($("view"));
+
+function render(reframe = false) {
+  const key = JSON.stringify([design, variant]);
+  if (key === shownKey && !reframe) return;
+  shownKey = key;
+  const parts = growPlant(design, variant);
+  const tris = parts.reduce((n, p) => n + p.faces.length / 3, 0);
+  statusEl.textContent = `${design.name} · ${design.height[0]}–${design.height[1]} m · ${tris} triangles · variant ${variant + 1}/${VARIANTS}`;
+  const template = Object.keys(TEMPLATES).find((k) => TEMPLATES[k].name === design.name);
+  if (template) $("template").value = template;
+  viewer.showMeshes([{ parts }], resolve, { reframe });
+  $("crown").value = design.crown;
+  $("leaf").value = design.foliage.kind;
+  $("bark").value = design.bark.kind;
+  $("height").value = design.height[1];
+  $("size").value = design.foliage.size;
+  $("density").value = design.foliage.density;
+  $("tint").value = design.foliage.tint;
+}
+
+/** Write a change to the shared design (instant, no command round trip). */
+function edit(params) {
+  design = normalizeDesign(mergeDesign(design, params));
+  render();
+  runchat.state.apply([{ op: "set", key: "design", value: design }]);
+}
+
 async function run(command, args) {
   if (busy) return;
   busy = true;
   statusEl.textContent = `${command}…`;
   try {
     const r = await runchat.command(command, args);
-    statusEl.textContent = `${r.result?.total ?? 0} plants`;
+    statusEl.textContent =
+      r.result?.added != null
+        ? `added ${r.result.added} · ${r.result.total} plants in the scene`
+        : "done";
   } catch (e) {
     statusEl.textContent = e.message;
   } finally {
@@ -53,51 +96,40 @@ async function run(command, args) {
   }
 }
 
-const viewer = createViewer(document.getElementById("view"), {
-  onPick: ([x, y]) => {
-    if (modeEl.value !== "planted") return;
-    run("scatter", {
-      species: pick.value,
-      count: 12,
-      center: [x, y],
-      radius: 8,
-    });
-  },
-});
-
-function show() {
-  const specimen = modeEl.value === "specimen";
-  document.getElementById("variant").hidden = !specimen;
-  contextEl.parentElement.hidden = specimen;
-  if (specimen) {
-    const s = SPECIES[pick.value];
-    statusEl.textContent = `${s.label} · ${s.height[0]}–${s.height[1]} m · variant ${variant + 1}/${VARIANTS}`;
-    viewer.showParts(unitModel(pick.value, variant), resolve);
-  } else {
-    viewer.setFilter({ only: group, context: contextEl.checked });
-  }
-}
-
-runchat.ready.then((ready) => {
-  group = ready?.app?.instanceId ? `app-${ready.app.instanceId}` : null;
-  show();
-});
-runchat.scene.subscribe((objects) => viewer.setObjects(objects));
 runchat.state.subscribe((state) => {
   assets = state._assets ?? {};
-  if (!busy && modeEl.value === "planted")
-    statusEl.textContent = `${(state.plants ?? []).length} plants`;
+  if (state.design) {
+    const next = normalizeDesign(state.design);
+    if (JSON.stringify(next) !== JSON.stringify(design)) design = next;
+  }
+  render();
 });
-pick.onchange = () => {
+
+$("template").onchange = (e) => {
   variant = 0;
-  show();
+  edit(TEMPLATES[e.target.value]);
+  render(true);
 };
-modeEl.onchange = show;
-contextEl.onchange = show;
-document.getElementById("variant").onclick = () => {
+$("crown").onchange = (e) => edit({ crown: e.target.value });
+$("leaf").onchange = (e) => edit({ foliage: { kind: e.target.value } });
+$("bark").onchange = (e) => edit({ bark: { kind: e.target.value } });
+$("height").onchange = (e) => {
+  const max = Number(e.target.value);
+  edit({ height: [+(max * 0.6).toFixed(1), max] });
+};
+$("size").oninput = (e) => edit({ foliage: { size: Number(e.target.value) } });
+$("density").oninput = (e) =>
+  edit({ foliage: { density: Number(e.target.value) } });
+$("tint").oninput = (e) => edit({ foliage: { tint: e.target.value } });
+$("reseed").onclick = () => edit({ seed: Math.floor(Math.random() * 99999) });
+$("variant").onclick = () => {
   variant = (variant + 1) % VARIANTS;
-  show();
+  render();
 };
-document.getElementById("settle").onclick = () => run("settle", {});
-document.getElementById("clear").onclick = () => run("clear", {});
-document.getElementById("frame").onclick = () => viewer.frame();
+$("save").onclick = () => run("save_design", {});
+$("add").onclick = () =>
+  run("add_to_scene", {
+    scatter: { center: [0, 0], radius: 35, count: Number($("count").value) },
+  });
+$("frame").onclick = () => render(true);
+render(true);

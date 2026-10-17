@@ -1,239 +1,337 @@
-// Buildings' API: place building masses on the shared terrain. Each building
-// is one mesh in the scene (walls, glazing, roof with real materials), set on
-// the ground and cut into slopes. Metres, Z up.
+// Building designer: model one building at a time (start from a template,
+// tune its parameters, look at it), keep a library of designs, and place a
+// design in the shared 3D scene on the terrain. Several placements of the same
+// design share one model. Metres, Z up.
 import { loadGround } from "./src/ground.js";
-import { materialTextures } from "./src/textures.js";
 import {
-  texturesFor,
-  DEFAULT_BUILDING,
   ROOFS,
   ROOF_FORMS,
   WALLS,
   buildingParts,
-  footprintCorners,
+  texturesFor,
 } from "./src/buildings.js";
+import {
+  TEMPLATES,
+  WINDOW_STYLES,
+  designKey,
+  normalizeDesign,
+  summarize,
+  toInternal,
+} from "./src/design.js";
+import { materialTextures } from "./src/textures.js";
 
 const xy = {
   type: "array",
   items: { type: "number" },
   description: "[x, y] metres",
 };
-const fields = {
-  width: { type: "number", description: "Along the ridge, metres." },
-  depth: { type: "number", description: "Across, metres." },
-  rotation: { type: "number", description: "Degrees about Z." },
-  floors: { type: "number" },
-  floor_height: { type: "number" },
-  roof: { type: "string", enum: ROOF_FORMS },
-  wall: { type: "string", enum: Object.keys(WALLS) },
-  roof_material: { type: "string", enum: Object.keys(ROOFS) },
-  wall_texture: {
-    type: ["string", "null"],
-    description: "https image URL tiled on the walls.",
-  },
-  balcony: { type: "boolean", description: "Glass-fronted balconies on upper floors (default true)." },
-  window: { type: "string", enum: ["regular", "wide"], description: "regular punched windows or wide picture windows." },
-  name: { type: "string" },
-};
+const PLINTH_DEPTH = 3;
 
-function normalise(input, base = DEFAULT_BUILDING) {
-  const b = {
-    ...base,
-    ...(input.at && { x: +input.at[0], y: +input.at[1] }),
-    ...(input.width && { w: input.width }),
-    ...(input.depth && { d: input.depth }),
-    ...(input.rotation !== undefined && { rot: input.rotation }),
-    ...(input.floors && { floors: Math.round(input.floors) }),
-    ...(input.floor_height && { fh: input.floor_height }),
-    ...(input.roof && { roof: input.roof }),
-    ...(input.wall && { wall: input.wall }),
-    ...(input.roof_material && { roof_material: input.roof_material }),
-    ...(input.wall_texture !== undefined && {
-      wall_texture: input.wall_texture,
-    }),
-    ...(input.name && { name: input.name }),
-    ...(input.balcony !== undefined && { balcony: !!input.balcony }),
-    ...(input.window && { window: input.window }),
-  };
-  if (!WALLS[b.wall]) throw new Error(`Unknown wall ${b.wall}`);
-  if (!ROOFS[b.roof_material])
-    throw new Error(`Unknown roof material ${b.roof_material}`);
-  if (!ROOF_FORMS.includes(b.roof)) throw new Error(`Unknown roof ${b.roof}`);
-  if (!(b.w > 0 && b.d > 0 && b.floors >= 1 && b.floors <= 30))
-    throw new Error("width, depth and floors (1–30) are required");
-  return b;
-}
+const current = (state) => normalizeDesign(state.design ?? TEMPLATES.cabin);
 
-async function meshesFor(list, ctx) {
-  const ground = await loadGround(ctx.scene);
-  ctx.textures = [...(ctx.textures ?? []), ...(await materialTextures(list.flatMap(texturesFor), { ...ctx.assets, ...Object.fromEntries((ctx.textures ?? []).map((t) => [t.id, true])) }))];
-  return list.map((b) => {
-    const heights = ground
-      ? footprintCorners(b).map(([x, y]) => ground.sample(x, y))
-      : [0];
-    const base = Math.min(...heights);
-    const depth = Math.max(...heights) - base + 0.4;
-    return {
-      id: `bldg-${b.id}`,
-      name: b.name ?? `Building ${b.id}`,
-      parent: ctx.group,
-      position: [b.x, b.y, +base.toFixed(3)],
-      rotation: [0, 0, b.rot],
-      parts: buildingParts(b, depth),
-    };
+function corners(design, x, y, rot) {
+  const a = (rot * Math.PI) / 180;
+  return [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+    [0, 0],
+  ].map(([sx, sy]) => {
+    const px = (sx * design.width) / 2;
+    const py = (sy * design.depth) / 2;
+    return [
+      x + px * Math.cos(a) - py * Math.sin(a),
+      y + px * Math.sin(a) + py * Math.cos(a),
+    ];
   });
 }
 
-function groupOp(ctx) {
-  return ctx.scene.some((o) => o.id === ctx.group)
+/** Scene output for the placements of the given design keys. */
+async function publish(ctx, placed, keys) {
+  const ground = await loadGround(ctx.scene);
+  const meshes = [];
+  const textures = [];
+  const have = { ...ctx.assets };
+  const scene = ctx.scene.some((o) => o.id === ctx.group)
     ? []
     : [{ op: "add", kind: "group", id: ctx.group, name: "Buildings" }];
+  for (const key of keys) {
+    const entry = placed[key];
+    const id = `bldg-${key}`;
+    if (!entry || entry.items.length === 0) {
+      for (const o of ctx.scene)
+        if (o.id.startsWith(`${id}-`)) scene.push({ op: "remove", id: o.id });
+      continue;
+    }
+    const internal = toInternal(entry.design);
+    for (const t of await materialTextures(texturesFor(internal), have)) {
+      textures.push(t);
+      have[t.id] = true;
+    }
+    meshes.push({
+      id,
+      name: entry.design.name,
+      parent: ctx.group,
+      parts: buildingParts(internal, PLINTH_DEPTH),
+      instances: entry.items.map((p) => {
+        const heights = ground
+          ? corners(entry.design, p.x, p.y, p.rot).map(([x, y]) =>
+              ground.sample(x, y),
+            )
+          : [0];
+        return {
+          name: p.name,
+          position: [p.x, p.y, +Math.min(...heights).toFixed(3)],
+          rotation: [0, 0, p.rot],
+        };
+      }),
+    });
+  }
+  return { scene, meshes, textures, on_terrain: !!ground };
 }
 
-function summary(b) {
-  return {
-    id: b.id,
-    name: b.name,
-    at: [b.x, b.y],
-    width: b.w,
-    depth: b.d,
-    rotation: b.rot,
-    floors: b.floors,
-    height_m: +(b.floors * b.fh).toFixed(2),
-    roof: b.roof,
-    wall: b.wall,
-    roof_material: b.roof_material,
-  };
-}
+const placements = (placed) =>
+  Object.entries(placed).flatMap(([key, e]) =>
+    e.items.map((p) => ({ ...p, design: e.design.name, key })),
+  );
 
 export const commands = {
-  list_materials: {
-    description: "Wall materials, roof materials and roof forms.",
+  list_templates: {
+    description: "Building templates to start a design from.",
     run() {
       return {
-        result: {
-          walls: Object.keys(WALLS),
-          roof_materials: Object.keys(ROOFS),
-          roofs: ROOF_FORMS,
-        },
+        result: Object.fromEntries(
+          Object.entries(TEMPLATES).map(([k, t]) => [k, summarize(t)]),
+        ),
       };
     },
   },
-  add_buildings: {
+  new_design: {
     description:
-      "Add buildings at [x, y]. Each sits on the terrain (its walls run down into sloping ground). Defaults: 10 × 7 m, 2 floors of 3.1 m, gable roof, timber walls, zinc roof. Returns their ids.",
+      "Start a new building design from a template (list_templates). The app shows the design; nothing is added to the scene until add_to_scene.",
     input: {
       type: "object",
       properties: {
-        buildings: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: { at: xy, ...fields },
-            required: ["at"],
-          },
-        },
+        template: { type: "string", enum: Object.keys(TEMPLATES) },
+        name: { type: "string" },
       },
-      required: ["buildings"],
+      required: ["template"],
     },
-    async run({ buildings }, ctx) {
-      const existing = ctx.state.buildings ?? [];
-      let next = existing.reduce((m, b) => Math.max(m, b.id), 0);
-      const added = buildings.map((input) => ({
-        ...normalise(input),
-        id: ++next,
-      }));
-      const all = [...existing, ...added];
+    run({ template, name }) {
+      const design = normalizeDesign({
+        ...TEMPLATES[template],
+        ...(name && { name }),
+      });
+      return { set: { design }, result: summarize(design) };
+    },
+  },
+  set_params: {
+    description: `Change the current building design; pass any subset. width/depth (m, footprint), floors, floor_height (m), roof ${ROOF_FORMS.join("|")}, roof_pitch (degrees), overhang (m), wall ${Object.keys(WALLS).join("|")}, roof_material ${Object.keys(ROOFS).join("|")}, window ${WINDOW_STYLES.join("|")}, window_width (m), window_spacing (m, centre to centre), sill (m above floor), window_height (fraction of floor height), balcony (bool), chimney (true|false|"auto"), frame_color (hex), wall_texture (https image URL or null). Look at the result with view_image on this node.`,
+    input: {
+      type: "object",
+      properties: { params: { type: "object" } },
+      required: ["params"],
+    },
+    run({ params }, { state }) {
+      const design = normalizeDesign({ ...current(state), ...params });
+      return { set: { design }, result: summarize(design) };
+    },
+  },
+  describe: {
+    description:
+      "The current design, saved designs, and every building placed in the scene with its id.",
+    run(_args, { state }) {
       return {
-        ops: [{ op: "set", key: "buildings", value: all }],
-        scene: groupOp(ctx),
-        meshes: await meshesFor(added, ctx),
-        textures: ctx.textures ?? [],
-        result: { added: added.map(summary), total: all.length },
+        result: {
+          design: summarize(current(state)),
+          saved: Object.keys(state.library ?? {}),
+          in_scene: placements(state.placed ?? {}),
+        },
       };
     },
   },
-  update_building: {
+  save_design: {
     description:
-      "Change a building by id: any of at, width, depth, rotation, floors, floor_height, roof, wall, roof_material, wall_texture, name.",
+      "Save the current design to the library under its name (or a new name).",
+    input: { type: "object", properties: { name: { type: "string" } } },
+    run({ name }, { state }) {
+      const design = { ...current(state), ...(name && { name }) };
+      return {
+        set: {
+          design,
+          library: { ...(state.library ?? {}), [design.name]: design },
+        },
+        result: { saved: design.name },
+      };
+    },
+  },
+  load_design: {
+    description: "Make a saved design current.",
     input: {
       type: "object",
-      properties: { id: { type: "number" }, at: xy, ...fields },
+      properties: { name: { type: "string" } },
+      required: ["name"],
+    },
+    run({ name }, { state }) {
+      const design = state.library?.[name];
+      if (!design)
+        throw new Error(
+          `No saved design ${name}. Saved: ${Object.keys(state.library ?? {}).join(", ") || "none"}`,
+        );
+      return { set: { design }, result: summarize(design) };
+    },
+  },
+  add_to_scene: {
+    description:
+      "Place the current design (or a saved one by name) in the shared 3D scene at [x, y] with rotation (degrees). It sits on the terrain, its plinth cut into slopes; flatten a pad with the terrain designer first on steep ground. Returns the placement id.",
+    input: {
+      type: "object",
+      properties: {
+        at: xy,
+        rotation: { type: "number" },
+        design: { type: "string" },
+        name: { type: "string", description: "Label for this placement." },
+      },
+      required: ["at"],
+    },
+    async run({ at, rotation = 0, design: saved, name }, ctx) {
+      const design = saved
+        ? normalizeDesign(
+            ctx.state.library?.[saved] ??
+              (() => {
+                throw new Error(`No saved design ${saved}`);
+              })(),
+          )
+        : current(ctx.state);
+      const key = designKey(design);
+      const placed = { ...(ctx.state.placed ?? {}) };
+      const id = ctx.state.next_id ?? 1;
+      placed[key] = {
+        design,
+        items: [
+          ...(placed[key]?.items ?? []),
+          {
+            id,
+            x: +at[0],
+            y: +at[1],
+            rot: +rotation,
+            name: name ?? `${design.name} ${id}`,
+          },
+        ],
+      };
+      const out = await publish(ctx, placed, [key]);
+      return {
+        ops: [
+          { op: "set", key: "placed", value: placed },
+          { op: "set", key: "next_id", value: id + 1 },
+        ],
+        scene: out.scene,
+        meshes: out.meshes,
+        textures: out.textures,
+        result: {
+          id,
+          design: design.name,
+          on_terrain: out.on_terrain,
+          total: placements(placed).length,
+        },
+      };
+    },
+  },
+  move_in_scene: {
+    description: "Move or turn a placed building by id (describe lists ids).",
+    input: {
+      type: "object",
+      properties: {
+        id: { type: "number" },
+        at: xy,
+        rotation: { type: "number" },
+      },
       required: ["id"],
     },
-    async run(input, ctx) {
-      const list = ctx.state.buildings ?? [];
-      const current = list.find((b) => b.id === input.id);
-      if (!current)
-        throw new Error(`No building ${input.id}. describe lists them.`);
-      const updated = { ...normalise(input, current), id: current.id };
-      const all = list.map((b) => (b.id === current.id ? updated : b));
+    async run({ id, at, rotation }, ctx) {
+      const placed = { ...(ctx.state.placed ?? {}) };
+      const key = Object.keys(placed).find((k) =>
+        placed[k].items.some((p) => p.id === id),
+      );
+      if (!key) throw new Error(`No placed building ${id}`);
+      placed[key] = {
+        ...placed[key],
+        items: placed[key].items.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                ...(at && { x: at[0], y: at[1] }),
+                ...(rotation != null && { rot: rotation }),
+              }
+            : p,
+        ),
+      };
+      const out = await publish(ctx, placed, [key]);
       return {
-        ops: [{ op: "set", key: "buildings", value: all }],
-        scene: groupOp(ctx),
-        meshes: await meshesFor([updated], ctx),
-        textures: ctx.textures ?? [],
-        result: summary(updated),
+        ops: [{ op: "set", key: "placed", value: placed }],
+        scene: out.scene,
+        meshes: out.meshes,
+        textures: out.textures,
+        result: { moved: id },
       };
     },
   },
-  remove_buildings: {
-    description: "Remove buildings by id.",
+  remove_from_scene: {
+    description:
+      "Remove placed buildings by id, or all of them with all: true.",
     input: {
       type: "object",
-      properties: { ids: { type: "array", items: { type: "number" } } },
-      required: ["ids"],
+      properties: {
+        ids: { type: "array", items: { type: "number" } },
+        all: { type: "boolean" },
+      },
     },
-    run({ ids }, ctx) {
-      const all = (ctx.state.buildings ?? []).filter(
-        (b) => !ids.includes(b.id),
-      );
+    async run({ ids = [], all }, ctx) {
+      const placed = { ...(ctx.state.placed ?? {}) };
+      for (const key of Object.keys(placed))
+        placed[key] = {
+          ...placed[key],
+          items: all
+            ? []
+            : placed[key].items.filter((p) => !ids.includes(p.id)),
+        };
+      const out = await publish(ctx, placed, Object.keys(placed));
+      for (const key of Object.keys(placed))
+        if (placed[key].items.length === 0) delete placed[key];
       return {
-        ops: [{ op: "set", key: "buildings", value: all }],
-        scene: ids
-          .filter((id) => ctx.scene.some((o) => o.id === `bldg-${id}`))
-          .map((id) => ({ op: "remove", id: `bldg-${id}` })),
-        result: { total: all.length },
-      };
-    },
-  },
-  clear: {
-    description: "Remove every building.",
-    run(_args, ctx) {
-      return {
-        ops: [{ op: "delete", key: "buildings" }],
-        scene: ctx.scene
-          .filter((o) => /^bldg-\d+$/.test(o.id))
-          .map((o) => ({ op: "remove", id: o.id })),
-        result: { total: 0 },
+        ops: [{ op: "set", key: "placed", value: placed }],
+        scene: out.scene,
+        meshes: out.meshes,
+        textures: out.textures,
+        result: { total: placements(placed).length },
       };
     },
   },
   settle: {
     description:
-      "Re-seat every building on the current terrain (after the landscape changed).",
+      "Re-seat every placed building on the current terrain (after the landscape changed).",
     async run(_args, ctx) {
-      const all = ctx.state.buildings ?? [];
+      const placed = ctx.state.placed ?? {};
+      const out = await publish(ctx, placed, Object.keys(placed));
       return {
-        scene: groupOp(ctx),
-        meshes: await meshesFor(all.slice(0, 40), ctx),
-        textures: ctx.textures ?? [],
-        result: { settled: Math.min(40, all.length) },
+        scene: out.scene,
+        meshes: out.meshes,
+        textures: out.textures,
+        result: { total: placements(placed).length },
       };
     },
   },
-  describe: {
+  clear_scene: {
     description:
-      "Every building with its position, size, height and materials, plus total floor area.",
-    run(_args, { state }) {
-      const list = state.buildings ?? [];
+      "Remove everything this app has put in the scene (its group), including leftovers from older versions.",
+    run(_args, ctx) {
       return {
-        result: {
-          buildings: list.map(summary),
-          floor_area_m2: Math.round(
-            list.reduce((s, b) => s + b.w * b.d * b.floors, 0),
-          ),
-        },
+        ops: [{ op: "delete", key: "placed" }],
+        scene: ctx.scene.some((o) => o.id === ctx.group)
+          ? [{ op: "remove", id: ctx.group }]
+          : [],
+        result: { cleared: true },
       };
     },
   },

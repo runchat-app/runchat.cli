@@ -2,22 +2,26 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Planting</title>
+    <title>Plant designer</title>
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
     <header>
-      <b>Planting</b>
+      <b>Plant designer</b>
       <span id="status">ready</span>
-      <select id="species"></select>
-      <select id="mode">
-        <option value="specimen">Specimen</option>
-        <option value="planted">Planted</option>
-      </select>
-      <button id="variant">Next variant</button>
-      <label hidden><input id="context" type="checkbox" /> Context</label>
-      <button id="settle">Settle</button>
-      <button id="clear">Clear</button>
+      <select id="template" title="Start from a template"></select>
+      <select id="crown" title="Crown shape"></select>
+      <select id="leaf" title="Foliage"></select>
+      <select id="bark" title="Bark"></select>
+      <label>Height <input id="height" type="number" min="0.3" max="40" step="0.5" style="width: 46px" /></label>
+      <label>Leaf <input id="size" type="range" min="0.03" max="0.5" step="0.005" /></label>
+      <label>Density <input id="density" type="range" min="1" max="20" step="1" /></label>
+      <input id="tint" type="color" title="Foliage tint" />
+      <button id="reseed">Reseed</button>
+      <button id="variant">Variant</button>
+      <button id="save">Save</button>
+      <label><input id="count" type="number" min="1" max="200" value="12" style="width: 44px" /></label>
+      <button id="add">Add to scene</button>
       <button id="frame">Frame</button>
     </header>
     <div id="view"></div>

@@ -125,6 +125,7 @@ export function createViewer(container, { group, onPick } = {}) {
     if ("only" in next) only = next.only;
     if ("context" in next) context = next.context;
     framed = false;
+    designShown = false;
     mode = "scene";
     controls.autoRotate = false;
     setObjects(latest);
@@ -210,55 +211,98 @@ export function createViewer(container, { group, onPick } = {}) {
    * instead of the scene, e.g. a plant specimen. resolve(ref) turns a
    * "texture:<id>" reference into a URL (or a promise of one).
    */
-  async function showParts(parts, resolve, { spin = true } = {}) {
+  async function buildPart(p, resolve) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(p.vertices, 3));
+    g.setIndex(p.faces ?? gridIndex(p.grid));
+    if (p.uvs) g.setAttribute("uv", new THREE.Float32BufferAttribute(p.uvs, 2));
+    else if (p.grid) g.setAttribute("uv", new THREE.Float32BufferAttribute(gridUV(p.grid), 2));
+    if (p.colors) {
+      const c = new THREE.Color();
+      g.setAttribute("color", new THREE.Float32BufferAttribute(p.colors.flatMap((h) => c.set(h).toArray()), 3));
+    }
+    g.computeVertexNormals();
+    const m = p.material ?? {};
+    const ref = (v) => (typeof v === "string" && v.startsWith("texture:") ? resolve(v.slice(8)) : v);
+    const material = new THREE.MeshStandardMaterial({
+      color: m.color ?? "#e8e4dc",
+      roughness: m.roughness ?? 0.85,
+      metalness: m.metalness ?? 0,
+      vertexColors: !!p.colors,
+      side: m.doubleSided === false ? THREE.FrontSide : THREE.DoubleSide,
+      transparent: (m.opacity ?? 1) < 1,
+      opacity: m.opacity ?? 1,
+      alphaTest: m.alphaMode === "MASK" ? (m.alphaCutoff ?? 0.5) : 0,
+      depthWrite: (m.opacity ?? 1) >= 1,
+    });
+    const [map, normal] = await Promise.all([texture(ref(m.map), true), texture(ref(m.normalMap), false)]);
+    if (map) material.map = map;
+    if (normal) material.normalMap = normal;
+    material.needsUpdate = true;
+    return { g, material };
+  }
+  const gridIndex = ([cols, rows]) => {
+    const out = [];
+    for (let r = 0; r < rows - 1; r++)
+      for (let c = 0; c < cols - 1; c++) {
+        const a = r * cols + c;
+        out.push(a, a + 1, a + cols + 1, a, a + cols + 1, a + cols);
+      }
+    return out;
+  };
+  const gridUV = ([cols, rows]) => {
+    const out = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) out.push(c / (cols - 1), r / (rows - 1));
+    return out;
+  };
+  const place = (node, t) => {
+    if (t.position) node.position.set(...t.position);
+    if (t.rotation) node.rotation.set(...t.rotation.map((d) => (d * Math.PI) / 180));
+    if (t.scale) node.scale.set(...t.scale);
+  };
+  let designShown = false;
+
+  /**
+   * Show a design built in the page instead of the scene: meshes as a command
+   * would return them ({ parts, position?, rotation?, scale?, instances? }).
+   * resolve(id) turns a "texture:<id>" reference into a URL or a promise of one.
+   */
+  async function showMeshes(meshes, resolve, { spin = false, ground = true, reframe = false } = {}) {
     mode = "parts";
     const mine = version + 1;
     version = mine;
     const group = new THREE.Group();
-    for (const p of parts) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute(p.vertices, 3));
-      g.setIndex(p.faces);
-      if (p.uvs) g.setAttribute("uv", new THREE.Float32BufferAttribute(p.uvs, 2));
-      if (p.colors) {
-        const c = new THREE.Color();
-        g.setAttribute("color", new THREE.Float32BufferAttribute(p.colors.flatMap((h) => c.set(h).toArray()), 3));
+    for (const mesh of meshes) {
+      const built = await Promise.all((mesh.parts ?? []).map((p) => buildPart(p, resolve)));
+      for (const t of mesh.instances ?? [mesh]) {
+        const node = new THREE.Group();
+        place(node, t);
+        for (const { g, material } of built) {
+          const m = new THREE.Mesh(g, material);
+          m.castShadow = m.receiveShadow = true;
+          node.add(m);
+        }
+        group.add(node);
       }
-      g.computeVertexNormals();
-      const m = p.material ?? {};
-      const ref = (v) => (typeof v === "string" && v.startsWith("texture:") ? resolve(v.slice(8)) : v);
-      const material = new THREE.MeshStandardMaterial({
-        color: m.color ?? "#e8e4dc",
-        roughness: m.roughness ?? 0.85,
-        metalness: m.metalness ?? 0,
-        vertexColors: !!p.colors,
-        side: m.doubleSided === false ? THREE.FrontSide : THREE.DoubleSide,
-        transparent: (m.opacity ?? 1) < 1,
-        opacity: m.opacity ?? 1,
-        alphaTest: m.alphaMode === "MASK" ? (m.alphaCutoff ?? 0.5) : 0,
-      });
-      const [map, normal] = await Promise.all([texture(ref(m.map), true), texture(ref(m.normalMap), false)]);
-      if (map) material.map = map;
-      if (normal) material.normalMap = normal;
-      material.needsUpdate = true;
-      const mesh = new THREE.Mesh(g, material);
-      mesh.castShadow = mesh.receiveShadow = true;
-      group.add(mesh);
     }
     if (mine !== version) return;
     root.clear();
     root.add(group);
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshStandardMaterial({ color: "#8a8a6a", roughness: 1 }));
-    const box = new THREE.Box3().setFromObject(group);
-    const size = box.getSize(new THREE.Vector3());
-    ground.scale.setScalar(Math.max(size.x, size.y) * 0.8 + 0.2);
-    ground.receiveShadow = true;
-    root.add(ground);
+    if (ground) {
+      const box = new THREE.Box3().setFromObject(group);
+      const size = box.getSize(new THREE.Vector3());
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 64), new THREE.MeshStandardMaterial({ color: "#9a9a7a", roughness: 1 }));
+      disc.scale.setScalar(Math.max(size.x, size.y) * 0.8 + 0.3);
+      disc.position.z = box.min.z - 0.01;
+      disc.receiveShadow = true;
+      root.add(disc);
+    }
     controls.autoRotate = spin;
     controls.autoRotateSpeed = 1.2;
-    framed = false;
-    frame(group, 0.4);
+    if (reframe || !designShown) frame(group, 0.4);
+    designShown = true;
   }
+  const showParts = (parts, resolve, opts) => showMeshes([{ parts }], resolve, opts);
 
   function frame(target = root, minRadius = 5) {
     const box = new THREE.Box3().setFromObject(target);
@@ -330,5 +374,5 @@ export function createViewer(container, { group, onPick } = {}) {
     controls.update();
     renderer.render(scene, camera);
   });
-  return { setObjects, setFilter, showParts, frame, frameGroup };
+  return { setObjects, setFilter, showParts, showMeshes, frame, frameGroup };
 }

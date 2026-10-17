@@ -1,202 +1,27 @@
-// Terrain's API: shape a landscape and publish it to the shared 3D scene —
-// a textured ground mesh (named "terrain", with its height grid inside so
-// other apps can sit things on it), overhanging cliff faces, boulders and
-// water. Metres, Z up, centred on the origin.
-import {
-  DEFAULTS,
-  PALETTES,
-  bakeTerrain,
-  buildTerrain,
-  cliffFace,
-  heightAt,
-  rockModel,
-} from "./src/terrain.js";
-import { materialTextures, textured, TILE_M } from "./src/textures.js";
-import { pngTexture } from "./src/png.js";
+// Terrain designer: shape one landscape design — landform, water, cliffs with
+// overhangs, boulders, building pads — and see it in the app. The shared 3D
+// scene changes only on publish_to_scene, which writes the textured ground
+// (named "terrain", with its height grid inside so other apps can sit things
+// on it), cliffs and boulders. Metres, Z up, centred on the origin.
+import { DEFAULTS, PALETTES, buildTerrain, heightAt } from "./src/terrain.js";
+import { designHash, designOf, landscapeMeshes, landscapeTextures } from "./src/landscape.js";
 import { rng } from "./src/geom.js";
 
-const xy = {
-  type: "array",
-  items: { type: "number" },
-  description: "[x, y] metres",
-};
+const xy = { type: "array", items: { type: "number" }, description: "[x, y] metres" };
 const ROCK_VARIANTS = 6;
 const MAX_ROCKS = 600;
 
 const paramsOf = (state) => ({ ...DEFAULTS, ...(state.params ?? {}) });
 
-function docHash(params, features) {
-  const text = JSON.stringify([params, features]);
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++)
-    h = Math.imul(h ^ text.charCodeAt(i), 16777619);
-  return (h >>> 0).toString(36);
-}
-
-/** Everything a landscape document puts in the scene. */
-async function publish(
-  state,
-  ctx,
-  { params, features, rocks },
-  extraOps = [],
-  note = {},
-) {
-  params = params ?? paramsOf(state);
-  features = features ?? state.features ?? [];
-  rocks = rocks ?? state.rocks ?? [];
-  const t = buildTerrain(params, features);
-  const key = docHash(params, features);
-  const textures = await materialTextures(["rock", "water"], ctx.assets);
-  const groundId = `terrain-${key}`;
-  if (!ctx.assets[groundId]) {
-    const baked = bakeTerrain(t, params, features);
-    textures.push(
-      await pngTexture(groundId, baked.size, baked.size, baked.color, 3),
-    );
-    textures.push(
-      await pngTexture(
-        `terrain-n-${key}`,
-        baked.normalSize,
-        baked.normalSize,
-        baked.normal,
-        3,
-      ),
-    );
-  }
-  const ground = {
-    vertices: t.vertices,
-    grid: [t.cols, t.rows],
-    material: {
-      map: `texture:${groundId}`,
-      normalMap: `texture:terrain-n-${key}`,
-      color: "#ffffff",
-      roughness: 0.95,
-    },
-    extras: {
-      heightfield: {
-        cols: t.cols,
-        rows: t.rows,
-        min: t.min,
-        max: t.max,
-        heights: t.heights,
-        water: params.water_level,
-      },
-    },
-  };
-  const parts = [ground];
-  if (params.water_level != null) {
-    const [x0, y0] = t.min;
-    const [x1, y1] = t.max;
-    const z = params.water_level;
-    const tile = TILE_M.water;
-    parts.push({
-      vertices: [x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z],
-      faces: [0, 1, 2, 0, 2, 3],
-      uvs: [
-        x0 / tile,
-        y0 / tile,
-        x1 / tile,
-        y0 / tile,
-        x1 / tile,
-        y1 / tile,
-        x0 / tile,
-        y1 / tile,
-      ],
-      material: {
-        ...textured("water"),
-        map: undefined,
-        color: "#24566a",
-        roughness: 0.06,
-        metalness: 0.05,
-        opacity: 0.82,
-      },
-    });
-  }
-  parts.push(skirt(t));
-  const meshes = [{ id: "terrain", name: "Terrain", parent: ctx.group, parts }];
-  const cliffs = features.filter((f) => f.type === "cliff");
-  cliffs.forEach((f, i) => {
-    const face = cliffFace(f, params, features);
-    meshes.push({
-      id: `cliff-${i}`,
-      name: `Cliff ${i + 1}`,
-      parent: ctx.group,
-      parts: [{ ...face, material: textured("rock", { roughness: 0.92 }) }],
-    });
-  });
-  const byVariant = new Map();
-  for (const r of rocks) {
-    if (!byVariant.has(r.v)) byVariant.set(r.v, []);
-    byVariant.get(r.v).push(r);
-  }
-  for (const [v, list] of byVariant) {
-    meshes.push({
-      id: `rocks-${v}`,
-      name: "Boulder",
-      parent: ctx.group,
-      parts: [
-        { ...rockModel(v), material: textured("rock", { roughness: 0.9 }) },
-      ],
-      instances: list.map((r) => ({
-        position: [
-          r.x,
-          r.y,
-          +(heightAt(params, features, r.x, r.y) - r.s * r.sink).toFixed(3),
-        ],
-        rotation: [r.tilt, r.tilt * 0.5, r.rot],
-        scale: [r.s, r.s * r.sy, r.s],
-      })),
-    });
-  }
-  const scene = ctx.scene.some((o) => o.id === ctx.group)
-    ? []
-    : [{ op: "add", kind: "group", id: ctx.group, name: "Landscape" }];
-  const liveCliffs = new Set(cliffs.map((_, i) => `cliff-${i}`));
-  const liveRocks = new Set([...byVariant.keys()].map((v) => `rocks-${v}`));
-  for (const o of ctx.scene) {
-    if (/^cliff-\d+$/.test(o.id) && !liveCliffs.has(o.id))
-      scene.push({ op: "remove", id: o.id });
-    const m = /^(rocks-\d+)-\d+$/.exec(o.id);
-    if (m && !liveRocks.has(m[1])) scene.push({ op: "remove", id: o.id });
-  }
+/** Result for an edit: the design changed in the app, not yet in the scene. */
+function edited(state, change, ops, note = {}) {
+  const design = { ...designOf(state), ...change };
+  const t = buildTerrain(design.params, design.features);
+  const unpublished = designHash(design.params, design.features) + ":" + design.rocks.length !== state.published;
   return {
-    ops: extraOps,
-    scene,
-    meshes,
-    textures,
-    result: { ...t.stats, cliffs: cliffs.length, rocks: rocks.length, ...note },
+    ops,
+    result: { ...t.stats, cliffs: design.features.filter((f) => f.type === "cliff").length, rocks: design.rocks.length, ...note, ...(unpublished && { scene: "not updated — run publish_to_scene to put this landscape in the scene" }) },
   };
-}
-
-/** Earth sides down to a base below the lowest ground: the site as a cut-away block. */
-function skirt(t) {
-  const base = Math.min(t.stats.lowest_m, 0) - 3;
-  const { cols, rows, heights, min, max } = t;
-  const vertices = [];
-  const faces = [];
-  const colors = [];
-  const edge = (pts) => {
-    for (let i = 0; i < pts.length - 1; i++) {
-      const [ax, ay, ah] = pts[i];
-      const [bx, by, bh] = pts[i + 1];
-      const k = vertices.length / 3;
-      vertices.push(ax, ay, base, bx, by, base, bx, by, bh, ax, ay, ah);
-      colors.push("#3b2f24", "#3b2f24", "#6a5440", "#6a5440");
-      faces.push(k, k + 1, k + 2, k, k + 2, k + 3);
-    }
-  };
-  const x = (c) => min[0] + ((max[0] - min[0]) * c) / (cols - 1);
-  const y = (r) => min[1] + ((max[1] - min[1]) * r) / (rows - 1);
-  const h = (c, r) => heights[r * cols + c];
-  edge(Array.from({ length: cols }, (_, c) => [x(c), y(0), h(c, 0)]));
-  edge(Array.from({ length: rows }, (_, r) => [x(cols - 1), y(r), h(cols - 1, r)]));
-  edge(Array.from({ length: cols }, (_, c) => [x(cols - 1 - c), y(rows - 1), h(cols - 1 - c, rows - 1)]));
-  edge(Array.from({ length: rows }, (_, r) => [x(0), y(rows - 1 - r), h(0, rows - 1 - r)]));
-  const k = vertices.length / 3;
-  vertices.push(min[0], min[1], base, min[0], max[1], base, max[0], max[1], base, max[0], min[1], base);
-  colors.push("#2e251d", "#2e251d", "#2e251d", "#2e251d");
-  faces.push(k, k + 1, k + 2, k, k + 2, k + 3);
-  return { vertices, faces, colors, material: { roughness: 1 } };
 }
 
 function makeRocks(
@@ -258,6 +83,29 @@ function makeRocks(
 }
 
 export const commands = {
+  publish_to_scene: {
+    description:
+      "Put the current landscape design into the shared 3D scene (ground, water, cliffs, boulders), replacing what this app published before. Other apps sit their plants and buildings on it; run their settle command after re-publishing a changed landform.",
+    async run(_args, ctx) {
+      const design = designOf(ctx.state);
+      const { meshes, key, terrain } = landscapeMeshes(design, ctx.group);
+      const textures = await landscapeTextures(design, key, terrain, ctx.assets);
+      const scene = ctx.scene.some((o) => o.id === ctx.group) ? [] : [{ op: "add", kind: "group", id: ctx.group, name: "Landscape" }];
+      const live = new Set(meshes.map((m) => m.id));
+      for (const o of ctx.scene) {
+        if (/^cliff-\d+$/.test(o.id) && !live.has(o.id)) scene.push({ op: "remove", id: o.id });
+        const m = /^(rocks-\d+)-\d+$/.exec(o.id);
+        if (m && !live.has(m[1])) scene.push({ op: "remove", id: o.id });
+      }
+      return {
+        ops: [{ op: "set", key: "published", value: key + ":" + design.rocks.length }],
+        scene,
+        meshes,
+        textures,
+        result: { ...terrain.stats, published: true, cliffs: meshes.filter((m) => m.id.startsWith("cliff-")).length, rocks: design.rocks.length },
+      };
+    },
+  },
   generate: {
     description:
       "Generate the base landscape and publish it to the scene. size = side length (m, default 80); resolution = grid points per side (9–129, default 97); amplitude = relief (m); scale = size of the main landforms (m); octaves/roughness = detail; seed = variation; water_level = height (m) of a water surface, or null; palette temperate|arid|alpine. Unspecified values keep their current setting.",
@@ -277,7 +125,7 @@ export const commands = {
     },
     async run(args, ctx) {
       const params = { ...paramsOf(ctx.state), ...args };
-      return publish(ctx.state, ctx, { params }, [
+      return edited(ctx.state, { params }, [
         { op: "set", key: "params", value: params },
       ]);
     },
@@ -310,7 +158,7 @@ export const commands = {
         ...(ctx.state.features ?? []),
         ...features.map((f) => ({ radius: 10, height: 4, ...f })),
       ].slice(-200);
-      return publish(ctx.state, ctx, { features: all }, [
+      return edited(ctx.state, { features: all }, [
         { op: "set", key: "features", value: all },
       ]);
     },
@@ -341,7 +189,7 @@ export const commands = {
           ...(depth != null && { depth }),
         },
       ];
-      return publish(ctx.state, ctx, { features: all }, [
+      return edited(ctx.state, { features: all }, [
         { op: "set", key: "features", value: all },
       ]);
     },
@@ -379,9 +227,7 @@ export const commands = {
         maxSlope: max_slope,
       });
       const rocks = [...existing, ...added].slice(-MAX_ROCKS);
-      return publish(
-        ctx.state,
-        ctx,
+      return edited(ctx.state,
         { rocks },
         [{ op: "set", key: "rocks", value: rocks }],
         { added_rocks: added.length },
@@ -407,9 +253,7 @@ export const commands = {
             (r) =>
               !center || Math.hypot(r.x - center[0], r.y - center[1]) > radius,
           );
-      return publish(
-        ctx.state,
-        ctx,
+      return edited(ctx.state,
         { rocks },
         [{ op: "set", key: "rocks", value: rocks }],
         { removed_rocks: before.length - rocks.length },
@@ -439,7 +283,7 @@ export const commands = {
         ...features,
         { type: "pad", at, size, rotation, height: level, margin },
       ];
-      const out = await publish(ctx.state, ctx, { features: all }, [
+      const out = await edited(ctx.state, { features: all }, [
         { op: "set", key: "features", value: all },
       ]);
       return { ...out, result: { ...out.result, pad_height_m: level } };
@@ -454,7 +298,7 @@ export const commands = {
     },
     async run(args, ctx) {
       const params = { ...paramsOf(ctx.state), ...args };
-      return publish(ctx.state, ctx, { params }, [
+      return edited(ctx.state, { params }, [
         { op: "set", key: "params", value: params },
       ]);
     },
@@ -463,7 +307,7 @@ export const commands = {
     description:
       "Remove every hill, valley, ridge, cliff and pad (boulders stay; remove_rocks clears them).",
     async run(_args, ctx) {
-      return publish(ctx.state, ctx, { features: [] }, [
+      return edited(ctx.state, { features: [] }, [
         { op: "delete", key: "features" },
       ]);
     },

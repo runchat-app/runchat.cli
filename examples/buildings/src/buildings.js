@@ -87,7 +87,9 @@ export function buildingParts(b, depth = 0) {
     tile: TILE_M.concrete,
   });
 
-  const wide = b.window === "wide";
+  const style = b.window === "regular" ? "punched" : b.window ?? "punched";
+  const wide = style === "wide" || style === "picture";
+  const ribbon = style === "ribbon";
   for (let side = 0; side < 4; side++) {
     const a = corners[side];
     const c = corners[(side + 1) % 4];
@@ -99,9 +101,9 @@ export function buildingParts(b, depth = 0) {
       a[1] + axis[1] * u - n[1] * inset,
       z,
     ];
-    const ww = wide ? Math.min(3.2, L * 0.28) : 1.35;
-    const spacing = wide ? ww + 1.2 : 2.7;
-    const count = Math.max(1, Math.floor((L - 0.8) / spacing));
+    const ww = ribbon ? Math.max(1, L - 1.6) : wide ? Math.min(3.2, L * 0.28) : (b.window_width ?? 1.35);
+    const spacing = ribbon ? L : (b.window_spacing ?? (wide ? ww + 1.2 : 2.7));
+    const count = style === "none" ? 1 : Math.max(1, Math.floor((L - 0.8) / spacing));
     const pad = (L - count * ww) / (count + 1);
     for (let f = 0; f < b.floors; f++) {
       const z0 = f === 0 ? plinthTop : f * b.fh;
@@ -111,8 +113,9 @@ export function buildingParts(b, depth = 0) {
       for (let i = 0; i < count; i++) {
         const u0 = pad + i * (ww + pad);
         const isDoor = front && i === Math.floor(count / 2);
-        const sill = isDoor ? z0 : f * b.fh + (wide ? 0.25 : 0.9);
-        const head = f * b.fh + b.fh * (wide ? 0.88 : 0.78);
+        if (style === "none" && !isDoor) continue;
+        const sill = isDoor ? z0 : f * b.fh + (b.sill ?? (wide ? 0.25 : 0.9));
+        const head = f * b.fh + b.fh * (b.window_height ?? (wide ? 0.88 : ribbon ? 0.72 : 0.78));
         openings.push({
           u0: isDoor ? u0 + ww / 2 - 0.55 : u0,
           u1: isDoor ? u0 + ww / 2 + 0.55 : u0 + ww,
@@ -291,8 +294,13 @@ export function buildingParts(b, depth = 0) {
   });
   if (b.roof === "gable" || b.roof === "shed") {
     const gable = b.roof === "gable";
-    const ov = 0.45;
-    const rise = gable ? Math.min(b.w, b.d) * 0.36 : Math.min(b.w, b.d) * 0.22;
+    const ov = b.overhang ?? 0.45;
+    const rise =
+      b.roof_pitch != null
+        ? Math.tan((Math.min(60, Math.max(3, b.roof_pitch)) * Math.PI) / 180) * (gable ? hd : b.d)
+        : gable
+          ? Math.min(b.w, b.d) * 0.36
+          : Math.min(b.w, b.d) * 0.22;
     const th = 0.22;
     const zAt = (y) =>
       gable ? H + rise * (1 - Math.abs(y) / hd) : H + rise * ((y + hd) / b.d);
@@ -374,7 +382,7 @@ export function buildingParts(b, depth = 0) {
           wallTile,
         );
       }
-      if (["brick", "render"].includes(b.wall)) {
+      if (b.chimney === true || (b.chimney !== false && ["brick", "render"].includes(b.wall))) {
         box(P.walls, {
           cx: hw * 0.45,
           cy: hd * 0.35,
@@ -516,7 +524,7 @@ export function buildingParts(b, depth = 0) {
   const parts = [
     [P.walls, wallMaterial],
     [P.plinth, textured("concrete", { roughness: 0.9 })],
-    [P.frames, FRAME],
+    [P.frames, { ...FRAME, ...(b.frame_color && { color: b.frame_color }) }],
     [P.glass, GLASS],
     [P.interior, INTERIOR],
     [P.roof, roofMat],
