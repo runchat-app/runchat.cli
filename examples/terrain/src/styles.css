@@ -1,0 +1,10 @@
+html, body { margin: 0; height: 100%; font: 12px "Hanken Grotesk", system-ui, sans-serif; background: #f4f2ee; color: #2a2a2a; }
+body { display: flex; flex-direction: column; }
+header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid #e0dbd2; background: #faf8f5; }
+header b { margin-right: 4px; }
+#status { color: #8a8378; flex: 1; min-width: 80px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button, select, input { font: inherit; }
+button { border: 1px solid #d8d2c8; background: #fff; border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+button.on { background: #2f6690; color: #fff; border-color: #2f6690; }
+label { display: flex; align-items: center; gap: 4px; color: #6b655c; }
+#view { flex: 1; min-height: 0; position: relative; }
