@@ -20,6 +20,8 @@ import { callCommand, UsageError } from "./commands/call.js";
 import { guideCommand } from "./commands/guide.js";
 import { loginCommand, logoutCommand, statusCommand } from "./commands/auth.js";
 import { setupCommand } from "./commands/setup.js";
+import { deployCommand } from "./commands/deploy.js";
+import { initCommand } from "./commands/init.js";
 
 // Built-in command names that are NOT Runchat tools.
 const BUILTINS = new Set([
@@ -33,6 +35,8 @@ const BUILTINS = new Set([
   "guide",
   "call",
   "setup",
+  "init",
+  "deploy",
 ]);
 
 async function main(argv: string[]): Promise<number> {
@@ -68,6 +72,9 @@ async function main(argv: string[]): Promise<number> {
   if (command === "setup") {
     return setupCommand(positionals[1], flags);
   }
+  if (command === "init") {
+    return initCommand(positionals[1]);
+  }
 
   // Everything below talks to the server.
   const baseUrl = resolveBaseUrl(flags);
@@ -90,6 +97,10 @@ async function main(argv: string[]): Promise<number> {
   if (command === "guide") {
     requireToken(token, "fetch the guide");
     return guideCommand(client);
+  }
+  if (command === "deploy") {
+    requireToken(token, "deploy an app");
+    return deployCommand(client, baseUrl, positionals[1], flags);
   }
 
   // A tool invocation. Two forms:
