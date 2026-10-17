@@ -43,6 +43,14 @@ const viewer = createViewer(document.getElementById("view"), {
   },
 });
 
+const contextEl = document.getElementById("context");
+let group = null;
+const applyFilter = () => viewer.setFilter({ only: group, context: contextEl.checked });
+runchat.ready.then((ready) => {
+  group = ready?.app?.instanceId ? `app-${ready.app.instanceId}` : null;
+  applyFilter();
+});
+contextEl.onchange = applyFilter;
 runchat.scene.subscribe((objects) => viewer.setObjects(objects));
 runchat.state.subscribe((state) => {
   const p = state.params;

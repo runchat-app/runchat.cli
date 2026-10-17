@@ -1,6 +1,6 @@
-// A small viewer for the shared Runchat scene, for app UIs: models load from
-// their URLs, primitives are drawn simply, everything is Z up. Objects in the
-// app's own group are drawn solid; everything else is context.
+// A small viewer for app UIs. It shows the app's own part of the shared
+// scene (its group), optionally with the rest of the scene as context, or a
+// model built in the page from mesh parts (a specimen). Z up.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -94,7 +94,44 @@ export function createViewer(container, { group, onPick } = {}) {
     return null;
   }
 
-  async function setObjects(objects) {
+  let latest = [];
+  let only = null;
+  let context = false;
+
+  /** Objects in a group and everything under it. */
+  function within(objects, groupId) {
+    const keep = new Set([groupId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const o of objects) {
+        if (!keep.has(o.id) && o.parent && keep.has(o.parent)) {
+          keep.add(o.id);
+          grew = true;
+        }
+      }
+    }
+    return objects.filter((o) => keep.has(o.id));
+  }
+
+  function setObjects(objects) {
+    latest = objects;
+    if (mode !== "scene") return;
+    return draw(only && !context ? within(objects, only) : objects);
+  }
+
+  /** Show only this group (null for everything); context adds the rest. */
+  function setFilter(next) {
+    if ("only" in next) only = next.only;
+    if ("context" in next) context = next.context;
+    framed = false;
+    mode = "scene";
+    controls.autoRotate = false;
+    setObjects(latest);
+  }
+
+  let mode = "scene";
+  async function draw(objects) {
     const mine = version + 1;
     version = mine;
     const nodes = new Map();
@@ -147,11 +184,87 @@ export function createViewer(container, { group, onPick } = {}) {
     if (!framed) frame();
   }
 
-  function frame(target = root) {
+  const textureLoader = new THREE.TextureLoader();
+  const textureCache = new Map();
+  async function texture(ref, srgb) {
+    if (!ref) return null;
+    const url = await ref;
+    if (!url) return null;
+    if (!textureCache.has(url)) {
+      textureCache.set(
+        url,
+        textureLoader.loadAsync(url).then((t) => {
+          t.flipY = false;
+          t.wrapS = t.wrapT = THREE.RepeatWrapping;
+          t.anisotropy = 8;
+          if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+          return t;
+        }),
+      );
+    }
+    return textureCache.get(url);
+  }
+
+  /**
+   * Show a model built from mesh parts (as a command would return them)
+   * instead of the scene, e.g. a plant specimen. resolve(ref) turns a
+   * "texture:<id>" reference into a URL (or a promise of one).
+   */
+  async function showParts(parts, resolve, { spin = true } = {}) {
+    mode = "parts";
+    const mine = version + 1;
+    version = mine;
+    const group = new THREE.Group();
+    for (const p of parts) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(p.vertices, 3));
+      g.setIndex(p.faces);
+      if (p.uvs) g.setAttribute("uv", new THREE.Float32BufferAttribute(p.uvs, 2));
+      if (p.colors) {
+        const c = new THREE.Color();
+        g.setAttribute("color", new THREE.Float32BufferAttribute(p.colors.flatMap((h) => c.set(h).toArray()), 3));
+      }
+      g.computeVertexNormals();
+      const m = p.material ?? {};
+      const ref = (v) => (typeof v === "string" && v.startsWith("texture:") ? resolve(v.slice(8)) : v);
+      const material = new THREE.MeshStandardMaterial({
+        color: m.color ?? "#e8e4dc",
+        roughness: m.roughness ?? 0.85,
+        metalness: m.metalness ?? 0,
+        vertexColors: !!p.colors,
+        side: m.doubleSided === false ? THREE.FrontSide : THREE.DoubleSide,
+        transparent: (m.opacity ?? 1) < 1,
+        opacity: m.opacity ?? 1,
+        alphaTest: m.alphaMode === "MASK" ? (m.alphaCutoff ?? 0.5) : 0,
+      });
+      const [map, normal] = await Promise.all([texture(ref(m.map), true), texture(ref(m.normalMap), false)]);
+      if (map) material.map = map;
+      if (normal) material.normalMap = normal;
+      material.needsUpdate = true;
+      const mesh = new THREE.Mesh(g, material);
+      mesh.castShadow = mesh.receiveShadow = true;
+      group.add(mesh);
+    }
+    if (mine !== version) return;
+    root.clear();
+    root.add(group);
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshStandardMaterial({ color: "#8a8a6a", roughness: 1 }));
+    const box = new THREE.Box3().setFromObject(group);
+    const size = box.getSize(new THREE.Vector3());
+    ground.scale.setScalar(Math.max(size.x, size.y) * 0.8 + 0.2);
+    ground.receiveShadow = true;
+    root.add(ground);
+    controls.autoRotate = spin;
+    controls.autoRotateSpeed = 1.2;
+    framed = false;
+    frame(group, 0.4);
+  }
+
+  function frame(target = root, minRadius = 5) {
     const box = new THREE.Box3().setFromObject(target);
     if (box.isEmpty()) return;
     const c = box.getCenter(new THREE.Vector3());
-    const r = Math.max(5, box.getSize(new THREE.Vector3()).length() / 2);
+    const r = Math.max(minRadius, box.getSize(new THREE.Vector3()).length() / 2);
     controls.target.copy(c);
     camera.position
       .copy(c)
@@ -217,5 +330,5 @@ export function createViewer(container, { group, onPick } = {}) {
     controls.update();
     renderer.render(scene, camera);
   });
-  return { setObjects, frame, frameGroup };
+  return { setObjects, setFilter, showParts, frame, frameGroup };
 }
