@@ -24,17 +24,22 @@ async function run(command, args) {
   }
 }
 
+let cliffStart = null;
 const viewer = createViewer(document.getElementById("view"), {
   onPick: ([x, y]) => {
-    if (tool === "hill")
-      run("add_features", {
-        features: [{ type: "hill", at: [x, y], radius: 10, height: 5 }],
-      });
-    if (tool === "valley")
-      run("add_features", {
-        features: [{ type: "valley", at: [x, y], radius: 10, height: 4 }],
-      });
+    if (tool === "hill") run("add_features", { features: [{ type: "hill", at: [x, y], radius: 10, height: 5 }] });
+    if (tool === "valley") run("add_features", { features: [{ type: "valley", at: [x, y], radius: 10, height: 4 }] });
     if (tool === "pad") run("flatten", { at: [x, y], size: [12, 8] });
+    if (tool === "rocks") run("place_rocks", { center: [x, y], radius: 6, count: 10 });
+    if (tool === "cliff") {
+      if (!cliffStart) {
+        cliffStart = [x, y];
+        statusEl.textContent = "click where the cliff ends";
+      } else {
+        run("add_cliff", { at: cliffStart, to: [x, y], height: 6 });
+        cliffStart = null;
+      }
+    }
   },
 });
 

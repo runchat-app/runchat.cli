@@ -3,7 +3,8 @@
 // on the ground wherever the Terrain app has put it. Metres, Z up.
 import { loadGround } from "./src/ground.js";
 import { rng } from "./src/geom.js";
-import { SPECIES, VARIANTS, unitModel } from "./src/plants.js";
+import { SPECIES, VARIANTS, speciesTextures, unitModel } from "./src/plants.js";
+import { foliageTexture, materialTextures } from "./src/textures.js";
 
 const xy = {
   type: "array",
@@ -44,6 +45,9 @@ async function publish(plants, ctx, ops, result) {
       })),
     };
   });
+  const need = speciesTextures([...new Set(plants.map((p) => p.species))]);
+  const textures = [...(await materialTextures(need.barks, ctx.assets))];
+  for (const kind of need.foliage) textures.push(...(await foliageTexture(kind, ctx.assets)));
   const live = new Set(meshes.map((m) => m.id));
   const scene = ctx.scene.some((o) => o.id === ctx.group)
     ? []
@@ -56,6 +60,7 @@ async function publish(plants, ctx, ops, result) {
     ops,
     scene,
     meshes,
+    textures,
     result: {
       ...result,
       total: plants.length,

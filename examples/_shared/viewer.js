@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 export function createViewer(container, { group, onPick } = {}) {
   THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -11,16 +12,24 @@ export function createViewer(container, { group, onPick } = {}) {
     antialias: true,
     preserveDrawingBuffer: true,
   });
-  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xeef0ec);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8577, 1.8));
-  const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
+  scene.background = new THREE.Color(0xcfdce6);
+  scene.fog = new THREE.Fog(0xcfdce6, 140, 420);
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.55;
+  scene.add(new THREE.HemisphereLight(0xdfeaf5, 0x6b6450, 0.9));
+  const sun = new THREE.DirectionalLight(0xfff1dc, 3.2);
   sun.position.set(40, -30, 60);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.04;
   Object.assign(sun.shadow.camera, {
     left: -60,
     right: 60,

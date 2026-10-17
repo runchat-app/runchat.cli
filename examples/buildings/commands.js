@@ -2,7 +2,9 @@
 // is one mesh in the scene (walls, glazing, roof with real materials), set on
 // the ground and cut into slopes. Metres, Z up.
 import { loadGround } from "./src/ground.js";
+import { materialTextures } from "./src/textures.js";
 import {
+  texturesFor,
   DEFAULT_BUILDING,
   ROOFS,
   ROOF_FORMS,
@@ -29,6 +31,8 @@ const fields = {
     type: ["string", "null"],
     description: "https image URL tiled on the walls.",
   },
+  balcony: { type: "boolean", description: "Glass-fronted balconies on upper floors (default true)." },
+  window: { type: "string", enum: ["regular", "wide"], description: "regular punched windows or wide picture windows." },
   name: { type: "string" },
 };
 
@@ -48,6 +52,8 @@ function normalise(input, base = DEFAULT_BUILDING) {
       wall_texture: input.wall_texture,
     }),
     ...(input.name && { name: input.name }),
+    ...(input.balcony !== undefined && { balcony: !!input.balcony }),
+    ...(input.window && { window: input.window }),
   };
   if (!WALLS[b.wall]) throw new Error(`Unknown wall ${b.wall}`);
   if (!ROOFS[b.roof_material])
@@ -60,6 +66,7 @@ function normalise(input, base = DEFAULT_BUILDING) {
 
 async function meshesFor(list, ctx) {
   const ground = await loadGround(ctx.scene);
+  ctx.textures = [...(ctx.textures ?? []), ...(await materialTextures(list.flatMap(texturesFor), { ...ctx.assets, ...Object.fromEntries((ctx.textures ?? []).map((t) => [t.id, true])) }))];
   return list.map((b) => {
     const heights = ground
       ? footprintCorners(b).map(([x, y]) => ground.sample(x, y))
@@ -141,6 +148,7 @@ export const commands = {
         ops: [{ op: "set", key: "buildings", value: all }],
         scene: groupOp(ctx),
         meshes: await meshesFor(added, ctx),
+        textures: ctx.textures ?? [],
         result: { added: added.map(summary), total: all.length },
       };
     },
@@ -164,6 +172,7 @@ export const commands = {
         ops: [{ op: "set", key: "buildings", value: all }],
         scene: groupOp(ctx),
         meshes: await meshesFor([updated], ctx),
+        textures: ctx.textures ?? [],
         result: summary(updated),
       };
     },
@@ -208,6 +217,7 @@ export const commands = {
       return {
         scene: groupOp(ctx),
         meshes: await meshesFor(all.slice(0, 40), ctx),
+        textures: ctx.textures ?? [],
         result: { settled: Math.min(40, all.length) },
       };
     },
