@@ -114,7 +114,8 @@ export const commands = {
 - \`index.html\` + \`src/\`: the UI. It renders from \`runchat.state.subscribe\` and acts through \`runchat.command\`.
 - \`commands.js\`: the API. People (through the UI), Runchat agents and external agents call the same commands.
 
-Deploy to a canvas:
+Deploy to a canvas. Make one with \`${CLI_NAME} create_runchat --name "My app"\` (or find one with
+\`${CLI_NAME} list_runchats\`); its \`id\` is the runchat id:
 
     ${CLI_NAME} deploy . --runchat_id <id>            # first time: creates the app node
     ${CLI_NAME} deploy . --runchat_id <id> --node_id <node>   # update it
@@ -124,10 +125,26 @@ Drive it from a terminal:
     ${CLI_NAME} read_app --runchat_id <id> --node_id <node>
     ${CLI_NAME} app_command --runchat_id <id> --node_id <node> --command add_dots --args '{"dots":[{"x":0.5,"y":0.5}]}'
 
+The full app contract (state ops, commands, publishing to the shared 3D scene) is in
+\`${CLI_NAME} use_skill --name html-code\`. Check scene output with \`${CLI_NAME} read_scene --runchat_id <id>\`.
+
 npm packages: add a package.json with dependencies and import them by name. Bundling is esbuild:
 link CSS from index.html, and host binary assets elsewhere.
 `,
 };
+
+export const INIT_HELP = `Usage: ${CLI_NAME} init [dir]
+
+Scaffold a Runchat app in dir (default: the current folder, which must be
+empty): index.html and src/ for the UI, and commands.js, the API that its UI
+and agents both call. No sign-in needed.
+
+Then:
+  ${CLI_NAME} create_runchat --name "My app"     make a canvas; note its id
+  ${CLI_NAME} deploy <dir> --runchat_id <id>     put the app on it
+  ${CLI_NAME} use_skill --name html-code         the app contract: state,
+                                             commands, the shared 3D scene
+`;
 
 export function initCommand(dir: string | undefined): number {
   const root = dir ?? ".";
@@ -141,6 +158,8 @@ export function initCommand(dir: string | undefined): number {
     writeFileSync(full, content);
   }
   info(`${c.green("✓")} Created a Runchat app in ${c.bold(root)}`);
-  info(`  Next: ${CLI_NAME} deploy ${root} --runchat_id <id>`);
+  info(`  Next: make a canvas with ${CLI_NAME} create_runchat --name "My app" (or list_runchats),`);
+  info(`        then ${CLI_NAME} deploy ${root} --runchat_id <id>`);
+  info(`  App contract: ${CLI_NAME} use_skill --name html-code`);
   return EXIT.OK;
 }

@@ -154,6 +154,27 @@ function parseResult(result: ToolCallResult & { structuredContent?: unknown }) {
   }
 }
 
+export const DEPLOY_HELP = `Usage: ${CLI_NAME} deploy [dir] --runchat_id <id> [--node_id <id>] [--label <name>] [--no-prune]
+
+Put the app in dir (default: the current folder) on a canvas as an html code
+node. dir needs index.html at its root; ES modules, CSS, package.json and
+commands.js come along. Runchat bundles it with esbuild.
+
+  --runchat_id <id>   The canvas. Make one with \`${CLI_NAME} create_runchat --name "My app"\`
+                      or find one with \`${CLI_NAME} list_runchats\`.
+  --node_id <id>      Update this app node in place instead of creating a new
+                      one. The first deploy prints the id.
+  --label <name>      Name for a new node (default: the folder name).
+  --no-prune          On update, keep remote files that are no longer local
+                      (by default they are deleted).
+  --no-vite-compat    Don't rewrite CSS imports and import.meta.env.
+
+After deploying, drive it:
+  ${CLI_NAME} read_app --runchat_id <id> --node_id <node>
+  ${CLI_NAME} app_command --runchat_id <id> --node_id <node> --command <name> --args '{...}'
+  ${CLI_NAME} read_scene --runchat_id <id>        what the app put in the 3D scene
+`;
+
 export async function deployCommand(
   client: McpClient,
   baseUrl: string,
@@ -162,9 +183,8 @@ export async function deployCommand(
 ): Promise<number> {
   const runchatId = flags["runchat_id"];
   if (typeof runchatId !== "string" || !runchatId) {
-    err(
-      `Usage: ${CLI_NAME} deploy [dir] --runchat_id <id> [--node_id <id>] [--label <name>] [--no-prune]`,
-    );
+    err("deploy needs --runchat_id.");
+    process.stderr.write("\n" + DEPLOY_HELP);
     return EXIT.USAGE;
   }
   const root = dir ?? ".";
