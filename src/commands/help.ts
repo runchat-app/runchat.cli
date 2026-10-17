@@ -26,6 +26,9 @@ ${b("BUILT-IN COMMANDS")}
   logout                Remove saved credentials
   status                Show auth status (exit 3 = not signed in)
   setup claude          Install the Runchat skill for Claude Code
+  init [dir]            Scaffold an app (UI + commands.js) agents can drive
+  deploy [dir] --runchat_id <id> [--node_id <id>]
+                        Put a local app on a canvas, or update its node
   version               Print the CLI version
   help                  Show this help
 

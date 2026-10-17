@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Building designer</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <header>
+      <b>Building designer</b>
+      <span id="status">ready</span>
+      <select id="template" title="Start from a template"></select>
+      <label>W <input id="width" type="number" min="3" max="60" step="0.5" style="width: 44px" /></label>
+      <label>D <input id="depth" type="number" min="3" max="40" step="0.5" style="width: 44px" /></label>
+      <label>Floors <input id="floors" type="number" min="1" max="20" style="width: 36px" /></label>
+      <select id="roof" title="Roof form"></select>
+      <label>Pitch <input id="pitch" type="number" min="3" max="60" style="width: 40px" /></label>
+      <select id="wall" title="Wall"></select>
+      <select id="roofMaterial" title="Roof material"></select>
+      <select id="window" title="Windows"></select>
+      <label><input id="balcony" type="checkbox" /> Balcony</label>
+      <button id="save">Save</button>
+      <label>at <input id="x" type="number" value="0" style="width: 40px" /><input id="y" type="number" value="0" style="width: 40px" /> ∠<input id="rot" type="number" value="0" step="15" style="width: 40px" /></label>
+      <button id="add">Add to scene</button>
+      <button id="frame">Frame</button>
+    </header>
+    <div id="view"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
