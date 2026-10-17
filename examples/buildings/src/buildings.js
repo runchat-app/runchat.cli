@@ -124,6 +124,10 @@ export function buildingParts(b, depth = 0) {
           door: isDoor,
         });
       }
+      if (openings.length === 0) {
+        wall(P.walls, [p(0, z0), p(L, z0), p(L, z1), p(0, z1)], wallTile);
+        continue;
+      }
       // Wall surface around the openings, band by band.
       const sills = Math.min(...openings.map((o) => o.sill));
       const heads = Math.max(...openings.map((o) => o.head));
