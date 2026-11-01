@@ -4,3 +4,7 @@ dist/
 .DS_Store
 .env
 .env.*
+
+# generate.mjs output
+examples/basketry-studies/frame-*.json
+examples/basketry-studies/basket-*.json

@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Basketry</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="view"></div>
+
+    <header id="bar">
+      <b class="brand">Basketry</b>
+      <span class="chip" id="stat-rods">0 rods</span>
+      <span class="chip" id="stat-length">0 m</span>
+      <span class="chip" id="stat-util">peak 0%</span>
+      <span class="chip" id="stat-joint">ties 0 N</span>
+      <span class="grow"></span>
+      <span class="chip quiet" id="stat-sim"><i class="dot"></i><span>settled</span></span>
+      <span class="chip quiet" id="stat-mode">local</span>
+      <button class="chip" id="panel-toggle" aria-expanded="false">Panel</button>
+    </header>
+
+    <nav id="tools"></nav>
+
+    <aside id="panel">
+      <section id="options"></section>
+      <section id="selection" hidden></section>
+      <section>
+        <h3>Build</h3>
+        <div class="row">
+          <button id="drop">Drop hoops</button>
+          <input id="drop-count" type="number" min="1" max="60" value="8" title="How many hoops to drop" />
+        </div>
+        <div class="row">
+          <button id="undo" title="Undo the last edit (Ctrl+Z)">Undo</button>
+          <button id="clear" class="danger">Clear</button>
+        </div>
+      </section>
+      <section>
+        <h3>View</h3>
+        <div class="seg" id="color-mode">
+          <button data-v="stress" class="on">Stress</button>
+          <button data-v="load">Load</button>
+          <button data-v="stage">Order</button>
+          <button data-v="profile">Profile</button>
+        </div>
+        <label class="slider">Rod thickness <span id="thick-v">×2</span>
+          <input id="thick" type="range" min="1" max="5" step="0.5" value="2" />
+        </label>
+        <label class="check"><input id="show-ties" type="checkbox" checked /> Show lashings</label>
+        <label class="check"><input id="ortho" type="checkbox" /> Orthographic camera</label>
+        <div id="legend"></div>
+      </section>
+      <section>
+        <h3>Section</h3>
+        <div class="seg" id="section-axis">
+          <button data-v="off" class="on">Off</button>
+          <button data-v="x">X cut</button>
+          <button data-v="y">Y cut</button>
+          <button data-v="z">Plan</button>
+        </div>
+        <div id="section-controls" hidden>
+          <label class="slider">Position <span id="section-v">0.0 m</span>
+            <input id="section-pos" type="range" min="-5" max="5" step="0.05" value="0" />
+          </label>
+          <div class="row">
+            <button id="section-flip">Flip side</button>
+            <button id="section-look">Look at cut</button>
+          </div>
+        </div>
+      </section>
+      <section>
+        <h3>Iterations</h3>
+        <div class="row">
+          <input id="iter-name" type="text" placeholder="Name this iteration" />
+          <button id="iter-save">Save</button>
+        </div>
+        <ul id="iter-list"></ul>
+        <div class="row">
+          <button id="design-export" title="Download the current design as a JSON file">Export file</button>
+          <button id="design-import" title="Load a design from a JSON file">Import file</button>
+          <input id="design-file" type="file" accept=".json,application/json" hidden />
+        </div>
+      </section>
+      <section>
+        <h3>Cut list</h3>
+        <p class="summary" id="cut-summary">No rods yet.</p>
+        <div class="row">
+          <button id="cut-open">Show cut list</button>
+        </div>
+      </section>
+      <section>
+        <h3>Profiles</h3>
+        <div class="seg" id="mat-profile"></div>
+        <p class="summary" id="mat-profile-label"></p>
+        <div class="grid2">
+          <label>Section <small>mm</small><input data-p="section_mm" type="number" step="1" /></label>
+          <label>E <small>GPa</small><input data-p="E_gpa" type="number" step="0.5" /></label>
+          <label>Strength <small>MPa</small><input data-p="strength_mpa" type="number" step="5" /></label>
+          <label>Density <small>kg/m³</small><input data-p="density" type="number" step="10" /></label>
+        </div>
+        <label class="check"><input id="mat-steam" type="checkbox" /> Steam-bent (keeps the shape it's placed in)</label>
+        <label class="slider">Bundle action <span id="bundle-v">0.5</span>
+          <input id="bundle-action" type="range" min="0" max="1" step="0.1" value="0.5" />
+        </label>
+        <p class="summary"><small>0: lashed rods slide past each other. 1: they act as one solid section.</small></p>
+      </section>
+      <section>
+        <h3>Lashings &amp; stock</h3>
+        <div class="grid2">
+          <label>Tie stiffness <small>N/m</small><input data-m="joint_stiffness" type="number" step="1000" /></label>
+          <label>Tie capacity <small>N</small><input data-m="joint_capacity_n" type="number" step="50" /></label>
+          <label>Max rod <small>m</small><input data-m="max_rod_m" type="number" step="0.5" /></label>
+          <label>Hoop lap <small>m</small><input data-m="lap_m" type="number" step="0.05" /></label>
+        </div>
+        <label class="slider">Self weight <span id="grav-v">×1</span>
+          <input id="grav" type="range" min="0" max="5" step="0.5" value="1" />
+        </label>
+      </section>
+    </aside>
+
+    <div id="start" hidden>
+      <h2>Start with a frame</h2>
+      <p>Spring a few 8 m rods into a stiff base, then build nest-like volumes on it with loops, hoops and weaves.</p>
+      <div class="row">
+        <button data-preset="cross">Cross vault</button>
+        <button data-preset="dome">Dome</button>
+        <button data-preset="tunnel">Tunnel</button>
+        <button data-preset="tripod">Tripod</button>
+      </div>
+    </div>
+
+    <div id="measure" hidden></div>
+
+    <div id="cutlist" hidden>
+      <div class="sheet">
+        <header>
+          <h2>Cut list</h2>
+          <span class="grow"></span>
+          <button id="cut-copy">Copy CSV</button>
+          <button id="cut-download">Download CSV</button>
+          <button id="cut-close" aria-label="Close">✕</button>
+        </header>
+        <div id="cut-body"></div>
+      </div>
+    </div>
+
+    <footer id="hint"></footer>
+    <div id="toast"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
