@@ -56,7 +56,10 @@ ${b("PASSING ARGUMENTS")}
   --params.prompt "x"   set one field of an object argument
   --json '{"a":1}'      Provide the whole argument object at once (individual
                         --flags override keys in it).
-  --key @file.txt       Read the value from a file.
+  --key @file.txt       Read the value from a file. Use this for any
+                        multi-line value (code, prompts): on Windows, npx
+                        cuts the command line at the first newline and
+                        every later flag is silently lost.
   --key @-              Read the value from stdin.
   --runchat-id <id>     Dashes and underscores are interchangeable in arg names.
 

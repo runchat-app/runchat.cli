@@ -73,7 +73,11 @@ npx @runchat/cli <tool> --arg value --arg2 value2
   argument object with `--json '{...}'`.
 - Windows PowerShell strips double quotes inside '...' arguments — prefer the
   list and dotted-flag forms over inline JSON there.
-- For large text (code, prompts), read from a file or stdin:
+- For large or multi-line text (code, prompts), read from a file or stdin.
+  Never pass a multi-line value inline (e.g. `--code "$(cat f.js)"`): on
+  Windows, npx runs through cmd.exe, which cuts the command line at the first
+  newline, so the value is truncated and every later flag is dropped without
+  an error.
   `--new_text @file.js` or `--new_text @-`.
   Object/array arguments read from a file are parsed as JSON:
   `--inputs @inputs.json`.
