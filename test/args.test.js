@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseArgs, normalizeFlag, coerceValue } from "../dist/args.js";
-import { buildToolArgs } from "../dist/commands/call.js";
+import { buildToolArgs, unknownFlags } from "../dist/commands/call.js";
 
 test("normalizeFlag strips dashes and maps kebab to snake", () => {
   assert.equal(normalizeFlag("--runchat-id"), "runchat_id");
@@ -118,4 +118,13 @@ test("dotted flags build nested objects and merge with whole-object flags", () =
     { seed: 1, prompt: "x" }
   );
   assert.deepEqual(buildToolArgs({ "a.b.c": "1" }).a, { b: { c: 1 } });
+});
+
+test("unknownFlags names flags the tool schema lacks", () => {
+  const schema = { node_id: { type: "string" }, label: { type: "string" }, inputs: { type: "object" } };
+  assert.deepEqual(
+    unknownFlags({ node_id: "n", code: "x", "inputs.a": "1", api_key: "k", raw: true, refresh: true }, schema),
+    ["code"]
+  );
+  assert.deepEqual(unknownFlags({ code: "x" }, {}), []); // no catalog → no guesses
 });

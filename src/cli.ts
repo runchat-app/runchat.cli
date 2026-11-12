@@ -3,6 +3,7 @@
 // the first token as a tool name and dispatch it to the MCP server.
 
 import { parseArgs } from "./args.js";
+import { checkCmdTruncation } from "./cmdTruncation.js";
 import { CLI_VERSION, EXIT } from "./constants.js";
 import { resolveToken, resolveBaseUrl } from "./config.js";
 import { c, err, info } from "./format.js";
@@ -93,6 +94,15 @@ async function main(argv: string[]): Promise<number> {
     return initCommand(positionals[1]);
   }
 
+  // A tool call whose inline text was cut by cmd.exe on Windows must not run.
+  if (!wantsHelp && (command === "call" || !BUILTINS.has(command))) {
+    const cut = checkCmdTruncation(argv, flags);
+    if (cut) {
+      err(cut);
+      return EXIT.USAGE;
+    }
+  }
+
   // Everything below talks to the server.
   const baseUrl = resolveBaseUrl(flags);
   if (command === "status" || command === "whoami") {
@@ -149,7 +159,7 @@ function requireToken(token: string | undefined, action: string): void {
     throw new AuthMissingError(
       `Not signed in — cannot ${action}.\n` +
         `Run \`runchat login\` to sign in with your browser ` +
-        `(or set RUNCHAT_API_KEY / pass --api-key).`
+        `(or set RUNCHAT_API_KEY / pass --api-key).`,
     );
   }
 }
@@ -160,7 +170,7 @@ async function showToolHelp(
   client: McpClient,
   baseUrl: string,
   toolNames: string[],
-  flags: Record<string, unknown>
+  flags: Record<string, unknown>,
 ): Promise<number> {
   let tools;
   try {
@@ -170,7 +180,7 @@ async function showToolHelp(
   } catch {
     err(
       `Cannot load tool definitions (need an API key, or no cached catalog yet).\n` +
-        `Authenticate, then run \`runchat tools\`. See \`runchat --help\`.`
+        `Authenticate, then run \`runchat tools\`. See \`runchat --help\`.`,
     );
     return EXIT.AUTH;
   }
@@ -178,11 +188,13 @@ async function showToolHelp(
   if (unknown.length) {
     err(
       `Unknown tool${unknown.length > 1 ? "s" : ""} ${unknown.map((n) => `"${n}"`).join(", ")}. ` +
-        `Run \`runchat tools\` to see all tools.`
+        `Run \`runchat tools\` to see all tools.`,
     );
     return EXIT.USAGE;
   }
-  process.stdout.write(toolNames.map((n) => renderToolHelp(findTool(tools, n)!)).join("\n"));
+  process.stdout.write(
+    toolNames.map((n) => renderToolHelp(findTool(tools, n)!)).join("\n"),
+  );
   return EXIT.OK;
 }
 
@@ -205,7 +217,11 @@ main(process.argv.slice(2))
     if (e instanceof McpHttpError) {
       if (e.status === 401 || e.status === 403) {
         err(`Authentication failed (${e.status}): ${e.message}`);
-        info(c.dim("Run `runchat login` to sign in again, or `runchat status` to check."));
+        info(
+          c.dim(
+            "Run `runchat login` to sign in again, or `runchat status` to check.",
+          ),
+        );
         process.exit(EXIT.AUTH);
       }
       if (e.status === 429) {

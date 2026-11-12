@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { coerceValue } from "../args.js";
-import { printToolResult } from "../format.js";
+import { c, info, printToolResult } from "../format.js";
 import { EXIT } from "../constants.js";
 import { getTools, findTool } from "../catalog.js";
 import type { McpClient, JsonSchemaProp } from "../mcp.js";
@@ -29,7 +29,10 @@ function typesOf(prop: JsonSchemaProp | undefined): string[] {
 /** True when a schema property only accepts structured JSON (object/array). */
 function wantsJson(prop: JsonSchemaProp | undefined): boolean {
   const types = typesOf(prop);
-  return !types.includes("string") && types.some((t) => t === "object" || t === "array");
+  return (
+    !types.includes("string") &&
+    types.some((t) => t === "object" || t === "array")
+  );
 }
 
 /**
@@ -42,13 +45,22 @@ function wantsJson(prop: JsonSchemaProp | undefined): boolean {
  * - object-only params given non-JSON text fail fast with a usable hint,
  *   instead of the server receiving a string.
  */
-function fitToSchema(value: unknown, raw: string, key: string, prop?: JsonSchemaProp): unknown {
+function fitToSchema(
+  value: unknown,
+  raw: string,
+  key: string,
+  prop?: JsonSchemaProp,
+): unknown {
   const types = typesOf(prop);
   if (types.length === 0) return value;
 
   if (types.length === 1 && types[0] === "string") return raw;
 
-  if (types.includes("array") && !types.includes("string") && !Array.isArray(value)) {
+  if (
+    types.includes("array") &&
+    !types.includes("string") &&
+    !Array.isArray(value)
+  ) {
     if (typeof value !== "string") return [value];
     let body = value.trim();
     if (body.startsWith("[") && body.endsWith("]")) body = body.slice(1, -1);
@@ -60,12 +72,16 @@ function fitToSchema(value: unknown, raw: string, key: string, prop?: JsonSchema
       .map((part) => (itemIsString ? part : coerceValue(part)));
   }
 
-  if (types.includes("object") && !types.includes("string") && typeof value === "string") {
+  if (
+    types.includes("object") &&
+    !types.includes("string") &&
+    typeof value === "string"
+  ) {
     throw new UsageError(
       `--${key} expects a JSON object, got: ${raw}\n` +
         `Windows PowerShell mangles inline JSON (it strips inner quotes and splits on spaces). ` +
         `Set fields with dotted flags instead: --${key}.<field> "value" (e.g. --${key}.prompt "a red chair"), ` +
-        `or put the JSON in a file and pass --${key} @file.json.`
+        `or put the JSON in a file and pass --${key} @file.json.`,
     );
   }
   return value;
@@ -77,17 +93,24 @@ function fitToSchema(value: unknown, raw: string, key: string, prop?: JsonSchema
  * tool's schema says the argument is an object or array, in which case the
  * contents are parsed as JSON — so `--inputs @inputs.json` works.
  */
-function resolveScalar(raw: string, key: string, prop?: JsonSchemaProp): unknown {
+function resolveScalar(
+  raw: string,
+  key: string,
+  prop?: JsonSchemaProp,
+): unknown {
   let text: string;
   if (raw === "@-") text = readStdin();
-  else if (raw.startsWith("@@")) return fitToSchema(coerceValue(raw.slice(1)), raw.slice(1), key, prop); // literal leading @
+  else if (raw.startsWith("@@"))
+    return fitToSchema(coerceValue(raw.slice(1)), raw.slice(1), key, prop); // literal leading @
   else if (raw.startsWith("@")) text = readFileSync(raw.slice(1), "utf8");
   else return fitToSchema(coerceValue(raw), raw, key, prop);
   if (!wantsJson(prop)) return text; // string, uncoerced
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new UsageError(`--${key} expects JSON (${String(prop?.type)}) but ${raw} is not valid JSON: ${(e as Error).message}`);
+    throw new UsageError(
+      `--${key} expects JSON (${String(prop?.type)}) but ${raw} is not valid JSON: ${(e as Error).message}`,
+    );
   }
 }
 
@@ -106,14 +129,19 @@ function readStdin(): string {
 /** Build the tool-argument object from parsed flags. */
 export function buildToolArgs(
   flags: Record<string, string | boolean | string[]>,
-  schema: Record<string, JsonSchemaProp> = {}
+  schema: Record<string, JsonSchemaProp> = {},
 ): Record<string, unknown> {
   let args: Record<string, unknown> = {};
 
   // --json supplies the whole argument object; individual flags override keys.
   const jsonFlag = flags["json"];
   if (typeof jsonFlag === "string") {
-    const text = jsonFlag === "@-" ? readStdin() : jsonFlag.startsWith("@") ? readFileSync(jsonFlag.slice(1), "utf8") : jsonFlag;
+    const text =
+      jsonFlag === "@-"
+        ? readStdin()
+        : jsonFlag.startsWith("@")
+          ? readFileSync(jsonFlag.slice(1), "utf8")
+          : jsonFlag;
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
@@ -127,7 +155,9 @@ export function buildToolArgs(
   }
 
   // Dotted flags go last so they merge into (not get replaced by) a whole-object flag.
-  const entries = Object.entries(flags).sort(([a], [b]) => Number(a.includes(".")) - Number(b.includes(".")));
+  const entries = Object.entries(flags).sort(
+    ([a], [b]) => Number(a.includes(".")) - Number(b.includes(".")),
+  );
   for (const [key, value] of entries) {
     if (RESERVED.has(key)) continue;
     // Dotted flags set nested fields without writing JSON (which Windows
@@ -135,7 +165,11 @@ export function buildToolArgs(
     if (key.includes(".")) {
       const [head, ...rest] = key.split(".");
       let target = args[head];
-      if (typeof target !== "object" || target === null || Array.isArray(target)) {
+      if (
+        typeof target !== "object" ||
+        target === null ||
+        Array.isArray(target)
+      ) {
         target = args[head] = {};
       }
       let obj = target as Record<string, unknown>;
@@ -144,7 +178,8 @@ export function buildToolArgs(
         obj = obj[part] as Record<string, unknown>;
       }
       const leaf = [value].flat().pop();
-      obj[rest[rest.length - 1]] = leaf === true ? true : resolveScalar(String(leaf), key);
+      obj[rest[rest.length - 1]] =
+        leaf === true ? true : resolveScalar(String(leaf), key);
       continue;
     }
     if (value === true) {
@@ -153,7 +188,10 @@ export function buildToolArgs(
       const prop = schema[key];
       const items = value.map((v) => resolveScalar(v, key, prop?.items));
       // Repeated flags build a list; a string param only keeps the last one.
-      args[key] = typesOf(prop).length && !typesOf(prop).includes("array") ? items[items.length - 1] : items;
+      args[key] =
+        typesOf(prop).length && !typesOf(prop).includes("array")
+          ? items[items.length - 1]
+          : items;
     } else {
       args[key] = resolveScalar(String(value), key, schema[key]);
     }
@@ -172,7 +210,7 @@ export class UsageError extends Error {}
 async function toolArgSchema(
   client: McpClient,
   baseUrl: string,
-  toolName: string
+  toolName: string,
 ): Promise<Record<string, JsonSchemaProp>> {
   try {
     const { tools } = await getTools(client, baseUrl);
@@ -182,13 +220,39 @@ async function toolArgSchema(
   }
 }
 
+/** Flags (top-level names) the tool's schema doesn't declare. Empty when the
+ *  schema is unknown, so a missing catalog never produces false warnings. */
+export function unknownFlags(
+  flags: Record<string, string | boolean | string[]>,
+  schema: Record<string, JsonSchemaProp>,
+): string[] {
+  if (Object.keys(schema).length === 0) return [];
+  const names = new Set(Object.keys(flags).map((key) => key.split(".")[0]));
+  return [...names].filter(
+    (name) => !RESERVED.has(name) && name !== "refresh" && !(name in schema),
+  );
+}
+
 export async function callCommand(
   client: McpClient,
   baseUrl: string,
   toolName: string,
-  flags: Record<string, string | boolean | string[]>
+  flags: Record<string, string | boolean | string[]>,
 ): Promise<number> {
-  const args = buildToolArgs(flags, await toolArgSchema(client, baseUrl, toolName));
+  const schema = await toolArgSchema(client, baseUrl, toolName);
+  const unknown = unknownFlags(flags, schema);
+  if (unknown.length) {
+    // Still sent (the server may accept an alias), but the tool will likely ignore it.
+    info(
+      c.yellow("warning") +
+        `: ${toolName} has no ${unknown.map((n) => `--${n}`).join(", ")} ` +
+        `(it takes ${Object.keys(schema)
+          .map((n) => `--${n}`)
+          .join(", ")}). ` +
+        `See \`runchat ${toolName} --help\`.`,
+    );
+  }
+  const args = buildToolArgs(flags, schema);
   const result = await client.callTool(toolName, args);
   const isError = printToolResult(result, { raw: flags["raw"] === true });
   return isError ? EXIT.TOOL_ERROR : EXIT.OK;
