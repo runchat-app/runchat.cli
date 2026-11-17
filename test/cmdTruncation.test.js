@@ -28,6 +28,29 @@ test("inlineTextFlags picks inline text flags, not @file/@- or ids", () => {
   assert.deepEqual(inlineTextFlags({ code: true }), []);
 });
 
+test("inlineTextFlags covers scripts and instructions not named code", () => {
+  assert.deepEqual(
+    inlineTextFlags({
+      command: "import Rhino\nprint(1)",
+      language: "python",
+      reason: "x",
+    }),
+    ["command"],
+  );
+  assert.deepEqual(
+    inlineTextFlags({
+      instruction: "a",
+      description: "b",
+      value: "c",
+      find: "d",
+      replace: "e",
+      question: "f",
+    }),
+    ["instruction", "description", "value", "find", "replace", "question"],
+  );
+  assert.deepEqual(inlineTextFlags({ command: "@script.py" }), []);
+});
+
 test("wasCutAtNewline compares the parent command line with argv", () => {
   const parent = 'cmd.exe /d /s /c "runchat x --code "a\nb" --label y"\r\n';
   assert.equal(wasCutAtNewline(parent, ["x", "--code", "a"]), true);

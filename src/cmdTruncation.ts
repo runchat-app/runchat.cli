@@ -12,7 +12,7 @@ import { execFileSync } from "node:child_process";
 
 /** Flag names that usually carry multi-line text (code, prompts, documents). */
 const TEXT_FLAG =
-  /(^|_)(code|text|content|contents|prompt|markdown|html|script|body|note|source|message)$/;
+  /(^|_)(code|text|content|contents|prompt|markdown|html|script|body|note|source|message|command|instruction|instructions|description|value|find|replace|question)$/;
 
 /** Text-like flags whose value was typed inline (not @file / @- / a boolean). */
 export function inlineTextFlags(
